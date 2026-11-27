@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Milestone Trend Analysis</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F2F4F8; --surface:#FFFFFF; --ink:#16233B; --muted:#5D6779; --line:#D8DEE8; --soft:#E6ECF5;
+  --accent:#1F3864; --accent-ink:#FFFFFF; --input:#FFF7D6; --input-line:#E2C35A;
+  --late:#C0392B; --early:#1E8449; --flat:#7F8C8D; --done:#1F4E79; --on:#3D7CC0; --nys:#8A939F; --amber:#C55A11;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif; --body:"IBM Plex Sans","Segoe UI",Arial,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0E1420; --surface:#161E2D; --ink:#E6EBF3; --muted:#9AA5B8; --line:#2A3448; --soft:#1E2B44;
+  --accent:#8FB0E8; --accent-ink:#0E1420; --input:#2E2A18; --input-line:#7A6A2A;
+  --late:#F07467; --early:#5CC98A; --flat:#A3AEB0; --done:#8FB0E8; --on:#6FA8E8; --nys:#8A939F; --amber:#F0A060; color-scheme:dark}}
+*{box-sizing:border-box}
+section.wrap{margin:0;max-width:none;width:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 14.5px/1.5 var(--body);padding:0 max(16px,env(safe-area-inset-right)) 56px max(16px,env(safe-area-inset-left))}
+.wrap{max-width:1260px;margin:0 auto;display:grid;gap:16px}
+header{padding-top:22px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
+h1{font:800 clamp(24px,3.2vw,32px)/1.1 var(--display);margin:0;color:var(--accent)}
+h2{font:800 17px/1.25 var(--display);margin:0}
+.sub{color:var(--muted);margin:4px 0 0}
+nav{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);padding-bottom:0}
+nav a{padding:9px 14px;text-decoration:none;color:var(--muted);font-weight:600;border-bottom:3px solid transparent;margin-bottom:-1px}
+nav a.on{color:var(--accent);border-color:var(--accent)}
+nav .badge{background:var(--late);color:#fff;border-radius:99px;padding:0 7px;font-size:11.5px;margin-left:5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+button{font:500 13.5px var(--body);cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 12px}
+button:hover{border-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button.ok{background:var(--early);border-color:var(--early);color:#fff}
+button.no{background:var(--late);border-color:var(--late);color:#fff}
+button.ghost{background:transparent;color:var(--muted)}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label.f{display:grid;gap:4px;font:600 11.5px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+select,input,textarea{font:500 14px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 9px;width:100%}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--k,var(--accent));border-radius:8px;padding:10px 12px;display:grid;gap:2px;min-width:0}
+.kpi .l{font:600 10.5px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font:800 26px/1.15 var(--display);color:var(--k,var(--ink));font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12px;color:var(--muted)}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px}
+@media (max-width:980px){.main{grid-template-columns:1fr}}
+.chead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;align-items:baseline;margin-bottom:6px}
+.chead .m{font:12px var(--mono);color:var(--muted)}
+#chart{width:100%;height:auto;display:block}
+svg text{fill:var(--muted);font-family:var(--body)}
+.legendk{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin-top:4px}
+.legendk span{display:inline-flex;gap:6px;align-items:center}
+.readout{font-size:13.5px;min-height:1.5em;margin-top:6px}
+.key{display:grid;max-height:540px;overflow:auto}
+.krow{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--line);font-size:13px}
+.krow .nm{min-width:0}.krow .nm small{display:block;color:var(--muted);font-size:12px}
+.krow input{width:16px;height:16px;accent-color:var(--accent)}
+.krow.off .nm{opacity:.45}
+.sw{width:12px;height:12px;border-radius:3px}
+.mv-up{color:var(--late);font-weight:600}.mv-dn{color:var(--early);font-weight:600}.mv-eq{color:var(--flat);font-weight:600}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.bars{display:grid;gap:8px;margin-top:10px}
+.bar{display:grid;grid-template-columns:minmax(0,180px) 1fr 40px;gap:10px;align-items:center;font-size:13px}
+.bar .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .track{height:14px;background:var(--soft);border-radius:4px;overflow:hidden}
+.bar .fill{display:block;height:100%;border-radius:4px}
+.bar .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.empty,.note{color:var(--muted);font-size:13px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font:600 11px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--soft);white-space:nowrap}
+td.nw{white-space:nowrap}
+td input[type=date]{background:var(--input);border-color:var(--input-line);padding:4px 6px;font-size:13px;width:auto}
+.ok-t{color:var(--early);font-weight:600}.bad{color:var(--late);font-weight:600}.warn{color:var(--amber);font-weight:600}
+tr.new td{background:var(--soft)}
+.pill{display:inline-block;font:600 11.5px var(--body);border-radius:999px;padding:2px 9px;white-space:nowrap;border:1px solid currentColor}
+.lvl{display:inline-block;font:700 11px var(--body);border-radius:4px;padding:1px 6px;color:#fff;background:var(--amber)}
+.lvl.l2,.lvl.l3,.lvl.l4{background:var(--late)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:end}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.banner{border:1px solid var(--line);border-left:4px solid var(--amber);background:var(--surface);border-radius:8px;padding:10px 14px;font-size:13.5px}
+.banner.good{border-left-color:var(--early)}
+details summary{cursor:pointer;color:var(--accent);font-weight:500}
+pre{white-space:pre-wrap;font:12.5px/1.5 var(--mono);background:var(--soft);padding:10px;border-radius:6px;margin:6px 0 0}
+.toast{font-size:13.5px;font-weight:500}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:20px;max-width:420px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(10,15,30,.45)}
+.decide{display:grid;gap:8px;margin-top:8px;padding:10px;background:var(--soft);border-radius:8px}
+[hidden]{display:none!important}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:6px 12px}.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.refreshed{font:12px var(--body);color:var(--muted)}
+.ilegend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;margin-top:8px;align-items:center}
+.ilegend b{margin-right:4px}.ilegend span{display:inline-flex;gap:6px;align-items:center}
+.ilegend i{display:inline-block;width:18px;border-top:2px dashed currentColor}
+table.sheet{border:1px solid var(--line);font-size:13px}
+table.sheet th,table.sheet td{border:1px solid var(--line);padding:5px 8px;white-space:nowrap}
+table.sheet thead th{background:var(--surface);color:var(--ink);text-transform:none;letter-spacing:0;font:600 12.5px var(--body)}
+table.sheet thead tr.sub th{font-weight:400;color:var(--muted);text-align:right}
+table.sheet th.cur,table.sheet td.cur{background:var(--soft)}
+table.sheet td.num{text-align:right;font-variant-numeric:tabular-nums}
+table.sheet select,table.sheet input{padding:4px 6px;font-size:13px;width:auto}
+table.sheet input[type=date],table.sheet input.reason,table.sheet select{background:var(--input);border-color:var(--input-line)}
+table.sheet input:disabled,table.sheet select:disabled{opacity:.55;background:transparent}
+table.sheet input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)}
+#mr-table td:nth-child(1),#mr-table th:nth-child(1){position:sticky;left:0;z-index:2;background:var(--surface);width:44px;min-width:44px;max-width:44px}
+#mr-table td:nth-child(2),#mr-table th:nth-child(2){position:sticky;left:44px;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--line)}
+.hdrgrid{display:grid;grid-template-columns:160px minmax(0,320px);gap:6px 12px;align-items:center;margin:12px 0}
+.hdrgrid label{font-weight:600}
+.bcbox{border-top:1px solid var(--line);margin-top:18px;padding-top:14px;display:grid;gap:10px}
+.appr{display:grid;grid-template-columns:110px minmax(0,320px) auto;gap:6px 10px;align-items:center}
+.psgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 18px;margin:12px 0}
+.psgrid label{display:grid;gap:4px;font:600 12.5px var(--body)}
+.wfgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-top:8px}
+.wf h4{margin:0 0 6px;font:700 14px var(--display)}
+.wf table.sheet input{width:100%;min-width:90px}
+.st{display:inline-block;font:600 11.5px var(--body);padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.st-Approved{color:var(--early)}.st-Pending{color:var(--amber)}.st-Draft{color:var(--muted)}.st-Rejected{color:var(--late)}
+.bline{display:inline-flex;align-items:center;gap:8px;font:700 14px var(--display);color:var(--accent)}
+#ps-rb{border:2px solid var(--accent)}
+dialog .opts{display:grid;gap:8px;margin-top:12px}
+dialog .opts button{text-align:left;padding:10px 12px}
+.chain{display:flex;flex-wrap:wrap;gap:6px}.chain span{font-size:12px;border-radius:6px;padding:2px 8px;border:1px solid var(--line)}
+.chain .Approved{color:var(--early);border-color:var(--early)}.chain .Rejected{color:var(--late);border-color:var(--late)}
+.chain .Pending{color:var(--amber);border-color:var(--amber);font-weight:600}.chain .Waiting,.chain .Cancelled{color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style></head>
+<body><div class="wrap">
+<header>
+  <div><h1>Milestone Trend Analysis</h1><p class="sub">Forecast history, delay escalation and approvals</p></div>
+  <div class="row"><span class="note" id="who"></span><button type="button" id="btn-login" class="ghost">Sign in to edit</button></div>
+</header>
+<nav aria-label="Sections">
+  <a href="#dashboard" data-v="dashboard">Dashboard</a>
+  <a href="#projects" data-v="projects">Project Setup</a>
+  <a href="#escalations" data-v="escalations">Escalations &amp; approvals<span class="badge" id="pend-badge" hidden></span></a>
+  <a href="#matrix" data-v="matrix">Responsibility matrix<span class="badge" id="od-badge" hidden></span></a>
+  <a href="#rules" data-v="rules">Escalation rules</a>
+  <a href="#data" data-v="data">Data entry</a>
+  <a href="#outbox" data-v="outbox">Email outbox</a>
+</nav>
+
+<!-- ======================= DASHBOARD -->
+<section id="v-dashboard" class="wrap">
+  <div class="banner" id="empty-banner" hidden><b>No projects yet.</b> Start on <a href="#projects">Project Setup</a>: enter the project details and approval workflow, then add the milestones and send them for baseline approval. Then record forecasts each month under <a href="#data">Data entry</a>.</div>
+  <div class="card filters">
+    <label class="f">Project<select id="f-proj"></select></label>
+    <label class="f">Reporting period (as-of)<select id="f-period"></select></label>
+    <label class="f">Milestone category<select id="f-cat"></select></label>
+    <label class="f">Milestone status<select id="f-status"></select></label>
+  </div>
+  <div class="kpis" id="kpis"></div>
+  <div class="main">
+    <div class="card">
+      <div class="chead"><h2 id="chart-title">Milestone Icicle Chart</h2>
+        <div class="row"><span class="refreshed" id="refreshed"></span>
+        <div class="seg" role="group" aria-label="Chart view"><button type="button" id="view-icicle" class="on">Icicle (by reporting month)</button><button type="button" id="view-mta">Trend (MTA)</button></div></div></div>
+      <p class="note" id="chart-axes" style="margin:0 0 6px">X = forecast date (months) · Y = baseline, then each reporting month</p>
+      <svg id="chart" viewBox="0 0 900 460" role="img" aria-label="Milestone chart"></svg>
+      <div class="ilegend" id="ilegend"></div>
+      <div class="legendk" id="mta-legend" hidden>
+        <span><svg width="26" height="10"><line x1="0" y1="5" x2="26" y2="5" stroke="currentColor" stroke-dasharray="5 4" stroke-width="1.5"/></svg>Completion line</span>
+        <span><svg width="14" height="14"><path d="M7 1 13 7 7 13 1 7Z" fill="currentColor"/></svg>Achieved</span>
+        <span><svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#E00000" stroke-width="2"/></svg>Moved ≥ 10 d in one period</span>
+      </div>
+      <div class="readout" id="readout" aria-live="polite">Hover or tap a point to read its forecast.</div>
+    </div>
+    <div class="card"><h2>Milestone key</h2><p class="note" style="margin:4px 0 8px">Untick to hide a line. <span class="lvl">L1</span> marks an open escalation.</p><div class="key" id="key"></div></div>
+  </div>
+  <div class="two">
+    <div class="card"><h2>Status breakdown</h2><div class="bars" id="statusbars"></div></div>
+    <div class="card"><h2>Top 5 most delayed open milestones</h2><div class="bars" id="top5"></div></div>
+  </div>
+</section>
+
+<!-- ======================= PROJECT SETUP -->
+<section id="v-projects" class="wrap" hidden>
+  <div class="card">
+    <div class="chead"><h2>Project Setup</h2>
+      <div class="row"><label class="f" style="min-width:260px">Project<select id="ps-proj"></select></label><button type="button" id="ps-new" style="align-self:end">+ New project</button></div></div>
+    <div class="psgrid">
+      <label>Project ID <span class="note">(short code, e.g. PRJ-01)</span><input id="ps-id"></label>
+      <label>Project Name<input id="ps-name"></label>
+      <label>Project Start Date<input id="ps-start" type="date"></label>
+      <label>Project End Date<input id="ps-end" type="date"></label>
+      <label>Project Controls Name<input id="ps-cname"></label>
+      <label>Project Controls ID<input id="ps-cid"></label>
+      <label>Project Manager<input id="ps-pm"></label>
+      <label>Project Manager ID<input id="ps-pmid"></label>
+    </div>
+    <h3 style="margin:14px 0 2px">Approval workflow</h3>
+    <p class="note" style="margin:0">Each request is approved in order: Level 1, then Level 2, then Level 3. The email receives the approval link; leave Level 2 or 3 empty if not needed.</p>
+    <div class="wfgrid">
+      <div class="wf"><h4>For addition of milestones into baseline</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>ID</th><th>Email (approval link)</th></tr></thead><tbody id="wf-addition"></tbody></table></div>
+      <div class="wf"><h4>For rebaseline of milestones</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>ID</th><th>Email (approval link)</th></tr></thead><tbody id="wf-rebaseline"></tbody></table></div>
+    </div>
+    <div class="row" style="margin-top:14px"><button type="button" class="primary" id="ps-save">Save project setup</button><button type="button" class="ghost" id="ps-del">Delete project</button><span class="toast" id="ps-toast" aria-live="polite"></span></div>
+  </div>
+
+  <div class="card" id="ps-ms-card">
+    <div class="chead"><h2>Baseline milestones</h2>
+      <div class="row"><span class="bline" id="ps-bline"></span><button type="button" class="primary" id="ps-rb-open">Rebaseline / New baseline</button></div></div>
+    <p class="note" style="margin:4px 0 10px">Add milestones, then click <b>Save milestones</b>. You will be asked whether the list is complete: <b>Yes</b> starts the approval workflow for addition into the baseline, <b>No</b> keeps them as a draft. Milestones join the baseline (and the dashboard and monthly report) only after the last level approves. Later additions follow the same steps.</p>
+    <div class="row" id="ps-counts" style="margin-bottom:8px"></div>
+    <div class="scroll"><table class="sheet"><thead><tr><th>S.No</th><th>Milestone ID</th><th>Project Milestone</th><th>Discipline</th><th>Baseline Date</th><th>Owner</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody id="ps-ms"></tbody></table></div>
+    <div class="row" style="margin-top:10px"><button type="button" id="ps-addrow">+ Add milestone row</button></div>
+    <datalist id="disc-list"></datalist>
+    <div class="row" style="margin-top:12px">
+      <label class="f" style="min-width:200px">Submitted by<input id="ps-by" placeholder="Your name"></label>
+      <label class="f" style="min-width:220px">Your email (approval updates)<input id="ps-byemail" type="email" placeholder="you@company.com"></label>
+      <button type="button" class="primary" id="ps-savems" style="align-self:end">Save milestones</button>
+    </div>
+    <p class="toast" id="ps-mstoast" aria-live="polite"></p>
+    <h3 style="margin:16px 0 6px">Approval requests</h3>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Workflow</th><th>Milestones</th><th>Requested</th><th>Approval chain</th><th>Status</th></tr></thead><tbody id="ps-req"></tbody></table></div>
+  </div>
+
+  <div class="card" id="ps-rb" hidden>
+    <div class="chead"><h2 id="ps-rb-title">Rebaseline</h2><button type="button" class="ghost" id="ps-rb-close">Close</button></div>
+    <p class="note" style="margin:4px 0 10px">Change the baseline date of existing milestones and/or add new milestones. Click <b>Save rebaseline</b>; if it is complete it goes to the rebaseline approval workflow, otherwise it is kept as a draft. Nothing changes until the last level approves.</p>
+    <h3 style="margin:6px 0">Change baseline dates</h3>
+    <div class="scroll"><table class="sheet"><thead><tr><th>Milestone ID</th><th>Project Milestone</th><th>Current baseline</th><th>New baseline</th><th>Change</th><th>Reason for change</th></tr></thead><tbody id="rb-ch"></tbody></table></div>
+    <h3 style="margin:14px 0 6px">New milestones in this baseline</h3>
+    <div class="scroll"><table class="sheet"><thead><tr><th>Milestone ID</th><th>Project Milestone</th><th>Discipline</th><th>Baseline Date</th><th>Owner</th><th>Priority</th><th></th></tr></thead><tbody id="rb-new"></tbody></table></div>
+    <div class="row" style="margin-top:8px"><button type="button" id="rb-addrow">+ Add new milestone</button>
+      <label class="f" style="min-width:280px">Reason for adding new milestones<input id="rb-newreason"></label></div>
+    <div class="row" style="margin-top:12px"><button type="button" class="primary" id="rb-save">Save rebaseline</button><button type="button" class="ghost" id="rb-discard">Discard draft</button><span class="toast" id="rb-toast" aria-live="polite"></span></div>
+  </div>
+</section>
+
+<dialog id="ask-dlg"><form method="dialog"><h2 id="ask-title">Are the milestones complete?</h2><p class="note" id="ask-text"></p>
+  <div class="opts"><button type="button" class="primary" id="ask-yes">Yes</button><button type="button" id="ask-no">No</button><button type="button" class="ghost" id="ask-cancel">Cancel</button></div></form></dialog>
+
+<!-- ======================= ESCALATIONS -->
+<section id="v-escalations" class="wrap" hidden>
+  <div class="card">
+    <div class="chead"><h2>Escalations &amp; approvals</h2><div class="row"><button type="button" id="btn-run">Run escalation check now</button></div></div>
+    <p class="note" style="margin:4px 0 12px">When an open milestone's delay against its original baseline reaches a rule's threshold, an escalation is raised and emailed to that rule's recipients with an approval link. Approvers accept the revised date or reject it and ask for a recovery plan. Escalations close on their own when the milestone completes or its delay falls back under the threshold; a higher level supersedes a lower one.</p>
+    <div class="stats" id="esc-stats"></div>
+  </div>
+  <div class="card"><div class="row" style="margin-bottom:10px"><label class="f" style="min-width:200px">Show<select id="esc-filter"><option value="Pending approval">Pending approval</option><option value="all">All escalations</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option><option value="Acknowledged">Acknowledged</option><option value="Closed">Closed / superseded</option></select></label></div>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Milestone</th><th>Level</th><th>Delay at escalation</th><th>Delay now</th><th>Sent to</th><th>Status</th><th>Raised</th><th>Decision</th></tr></thead><tbody id="esc-rows"></tbody></table></div>
+  </div>
+  <div class="card"><h2>Baseline approval requests</h2><p class="note" style="margin:4px 0 10px">Milestone additions and rebaselines, approved one level at a time (L1 → L2 → L3) by the people set on Project Setup. Signed-in admins can open the current approver's page.</p>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Project</th><th>Changes</th><th>Requested</th><th>Approval chain</th><th>Status</th></tr></thead><tbody id="bl-rows"></tbody></table></div></div>
+</section>
+
+<!-- ======================= MATRIX -->
+<section id="v-matrix" class="wrap" hidden>
+  <div class="card">
+    <div class="chead"><h2>Update compliance</h2><span class="m" id="mx-today"></span></div>
+    <p class="note" style="margin:4px 0 12px">Each discipline must refresh the forecast of every open milestone once per cycle. The responsible person is emailed their update link when a cycle falls due. Missing a due date plus the grace period escalates to the discipline's Level 1 contact; missing two in a row escalates to Level 2. Escalations close automatically once the discipline updates.</p>
+    <div class="stats" id="mx-cards"></div>
+    <p class="banner" id="mx-unassigned" hidden style="margin-top:12px"></p>
+  </div>
+  <div class="card">
+    <h2>Responsibility matrix</h2>
+    <p class="note" style="margin:4px 0 12px">A discipline matches milestones by their category. Due day: 1 = Monday … 7 = Sunday for weekly updates, or the day of the month for monthly updates. Delay escalations also go to these contacts when a rule has "Notify discipline contacts" ticked: Level 1 to the responsible person and the L1 contact, Level 2 and above also to the L2 contact.</p>
+    <div class="scroll"><table><thead><tr><th>Discipline</th><th>Responsible person</th><th>Email</th><th>Frequency</th><th>Due day</th><th>Grace (days)</th><th>Level 1 escalation</th><th>Level 2 escalation</th><th>Update page / input file</th><th></th></tr></thead><tbody id="mx-rows"></tbody></table></div>
+    <div class="row" style="margin-top:12px"><button type="button" id="mx-add">Add discipline</button><button type="button" class="primary" id="mx-save">Save matrix</button><span class="toast" id="mx-toast" aria-live="polite"></span></div>
+  </div>
+</section>
+
+<!-- ======================= RULES -->
+<section id="v-rules" class="wrap" hidden>
+  <div class="card">
+    <h2>Escalation rules</h2>
+    <p class="note" style="margin:4px 0 12px">Delay = days between the current forecast (or actual date) and the original baseline. A milestone is escalated to the highest level it reaches, once per level. Separate several email addresses with commas.</p>
+    <div class="scroll"><table><thead><tr><th>Level</th><th>Name</th><th>Escalate when delay ≥ (days)</th><th>Email recipients</th><th>Notify discipline contacts</th><th>Active</th><th></th></tr></thead><tbody id="rule-rows"></tbody></table></div>
+    <div class="row" style="margin-top:12px"><button type="button" id="btn-addrule">Add level</button><button type="button" class="primary" id="btn-saverules">Save rules</button><span class="toast" id="rule-toast" aria-live="polite"></span></div>
+  </div>
+</section>
+
+<!-- ======================= DATA -->
+<section id="v-data" class="wrap" hidden>
+  <div class="card" id="monthly">
+    <h2>Monthly progress report</h2>
+    <p class="note" style="margin:4px 0 0">Choose the project and reporting period, then for each milestone set the progress, the completed date (when completed) and this month's forecast. Earlier months are shown for reference. A reason is required whenever a forecast moves. Submitting the same period again corrects that month's figures.</p>
+    <div class="hdrgrid">
+      <label for="mr-proj">Project Name</label><select id="mr-proj"></select>
+      <label for="mr-period">Reporting Period</label><select id="mr-period"></select>
+      <label for="mr-by">Submitted by</label><input id="mr-by" placeholder="Your name" autocomplete="name">
+      <label for="mr-email">Email (for approval updates)</label><input id="mr-email" type="email" placeholder="you@company.com" autocomplete="email">
+    </div>
+    <div class="scroll"><table class="sheet" id="mr-table"><thead id="mr-head"></thead><tbody id="mr-rows"></tbody></table></div>
+    <div class="bcbox">
+      <h3 style="margin:0">If baseline to be changed</h3>
+      <p class="note" style="margin:0">List each milestone whose baseline should move. The request goes to the L1 approver first; each next level is asked only after the previous one approves. The new baseline applies only when every level has approved.</p>
+      <div class="scroll"><table class="sheet"><thead><tr><th>Milestone</th><th>Current baseline</th><th>New baseline</th><th>Change</th><th>Reason for baseline change</th><th></th></tr></thead><tbody id="bc-rows"></tbody></table></div>
+      <div><button type="button" id="bc-add">Add milestone</button></div>
+      <p class="note" id="rb-chain" style="margin:0"></p>
+    </div>
+    <div class="row" style="margin-top:14px"><button type="button" class="primary" id="mr-submit">Submit report</button><span class="toast" id="mr-toast" aria-live="polite"></span></div>
+  </div>
+  <div class="card">
+    <h2>Import MS Project CSV exports</h2>
+    <p class="note" style="margin:4px 0 10px">Select one or more files named <span style="font-family:var(--mono)">&lt;ProjectID&gt;_&lt;yyyy-mm-dd&gt;.csv</span>, exported with the "MTA Export" map. Milestone tasks are imported; summary and ordinary tasks are ignored. Rows already recorded are skipped.</p>
+    <div class="grid3"><label class="f">CSV files<input type="file" id="m-files" accept=".csv" multiple></label>
+      <label class="f">Date format in the files<select id="m-culture"><option value="en-GB">Day first (30/11/26)</option><option value="en-US">Month first (11/30/26)</option></select></label>
+      <div><button type="button" class="primary" id="m-upload">Import files</button></div></div>
+    <p class="toast" id="m-toast" aria-live="polite"></p>
+  </div>
+  <div class="card">
+    <div class="chead"><h2>Forecast history (most recent rows)</h2><span class="m" id="log-count"></span></div>
+    <div class="scroll"><table><thead><tr><th>Milestone</th><th>Reporting date</th><th>Forecast</th><th>Actual</th><th>Movement</th><th>Comment</th></tr></thead><tbody id="log"></tbody></table></div>
+    <div class="row" style="margin-top:12px"><button type="button" class="ghost" id="btn-reset">Delete all data</button><span class="note" id="reset-toast"></span></div>
+  </div>
+</section>
+
+<!-- ======================= OUTBOX -->
+<section id="v-outbox" class="wrap" hidden>
+  <div id="mail-banner"></div>
+  <div class="card"><h2>Email outbox</h2><p class="note" style="margin:4px 0 10px">Every escalation and decision email, newest first.</p>
+    <div class="scroll"><table><thead><tr><th>When</th><th>To</th><th>Subject</th><th>Status</th></tr></thead><tbody id="mail-rows"></tbody></table></div></div>
+</section>
+</div>
+
+<dialog id="login-dlg"><form method="dialog" id="login-form"><h2>Sign in to edit</h2><p class="note">Enter the admin password to record data, change rules and approve escalations here. Approvers can also act from the link in their email without signing in.</p>
+  <label class="f" style="margin:10px 0">Admin password<input type="password" id="pw" autocomplete="current-password"></label>
+  <p class="bad" id="login-err" hidden>That password is not correct.</p>
+  <div class="row"><button type="submit" class="primary" value="ok">Sign in</button><button type="button" class="ghost" id="login-cancel">Cancel</button></div></form></dialog>
+
+<script>
+(function(){
+const DAY=864e5, MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const day=s=>s?Math.round(Date.parse(s+"T00:00:00Z")/DAY):null, iso=d=>new Date(d*DAY).toISOString().slice(0,10);
+const fmt=(d,sh)=>{if(d==null)return"–";const x=new Date(d*DAY);return String(x.getUTCDate()).padStart(2,"0")+"-"+MON[x.getUTCMonth()]+"-"+(sh?String(x.getUTCFullYear()).slice(2):x.getUTCFullYear());};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const CFG={tol:3,sig:10};
+const STATUSES=["Completed","Delayed","Ahead of Schedule","On Schedule","Not Yet Started"];
+const SCOL={"Completed":"var(--done)","Delayed":"var(--late)","Ahead of Schedule":"var(--early)","On Schedule":"var(--on)","Not Yet Started":"var(--nys)",
+  "Pending approval":"var(--amber)","Approved":"var(--early)","Acknowledged":"var(--on)","Rejected":"var(--late)","Closed":"var(--muted)","Superseded":"var(--muted)"};
+const PAL=["#1F77B4","#E67E22","#2CA02C","#D62728","#9467BD","#8C564B","#D35FB7","#17BECF","#A8A21E","#5A63C8","#AD494A","#6B8E23","#E7969C","#7B4173","#3182BD"];
+const $=id=>document.getElementById(id);
+let msAll=[],workflows={};
+let projects=[],ms=[],msBy={},cats=[],obs=[],escs=[],config={},pendingBase=new Set(),savedApprovers={},blreqs=[];
+const st={proj:"all",period:"latest",cat:"all",status:"all",hidden:new Set(),view:"icicle"};
+const monthKey=d=>new Date(d*DAY).toISOString().slice(0,7);
+const monthLabel=k=>MON[+k.slice(5,7)-1]+" - "+k.slice(2,4);
+const periodDay=k=>{const y=+k.slice(0,4),m=+k.slice(5,7);const last=new Date(Date.UTC(y,m,0)).getUTCDate();return day(`${k}-${String(Math.min(30,last)).padStart(2,"0")}`);};
+let pw="";try{pw=sessionStorage.getItem("mta-pw")||"";}catch(e){}
+
+async function api(path,opts={}){
+  opts.headers=Object.assign({"X-Admin-Password":pw},opts.headers||{});
+  const r=await fetch(path,opts);let body={};try{body=await r.json();}catch(e){}
+  if(r.status===401){pw="";try{sessionStorage.removeItem("mta-pw");}catch(e){}updateWho();$("login-err").hidden=true;$("pw").value="";if(!$("login-dlg").open)$("login-dlg").showModal();throw new Error("Sign in with the admin password, then click the button again.");}
+  if(!r.ok)throw new Error(body.detail||("Request failed ("+r.status+")"));
+  return body;
+}
+async function load(){
+  const [data,e,c]=await Promise.all([api("/api/data"),api("/api/escalations"),api("/api/config")]);
+  config=c;escs=e;
+  projects=data.P.map(([id,name,freq,sd,ed,mgr,bno])=>({id,name,freq,start:day(sd),end:day(ed),mgr,bno:bno||0}));
+  msAll=data.M.map(([p,id,name,cat,base,owner,prio,desc,status,note])=>({p,id,name,cat,base:day(base),owner,prio,desc,status:status||"Approved",note}));
+  ms=msAll.filter(m=>m.status==="Approved");workflows=data.workflows||{};
+  $("empty-banner").hidden=projects.length>0;
+  msBy=Object.fromEntries(ms.map(m=>[m.id,m]));cats=[...new Set(ms.map(m=>m.cat).filter(Boolean))];
+  obs=data.O.map(([m,r,f,a,c,id,pg])=>({m,r:day(r),f:day(f),a:day(a),c,seq:id,pg}));
+  pendingBase=new Set(data.pending_baseline||[]);savedApprovers=data.approvers||{};
+  if(!projects.some(p=>p.id===mr.proj)){mr.proj=projects[0]?.id;mr.period=null;}
+  loadBaselineRequests().catch(()=>{});
+  updateWho();renderAll();
+}
+function updateWho(){
+  const need=config.admin_required;
+  $("who").textContent=!need?"Editing open (no admin password set)":pw?"Signed in as admin":"Read-only";
+  $("btn-login").hidden=!need||!!pw;
+}
+// ------------------------------------------------ analysis (same rules as the workbook)
+function projDates(pid){return [...new Set(obs.filter(o=>!pid||msBy[o.m]?.p===pid).map(o=>o.r))].sort((a,b)=>a-b);}
+function analyze(){
+  const pd={};projects.forEach(p=>pd[p.id]=projDates(p.id));
+  return ms.map(m=>{
+    const dates=pd[m.p]||[];const asOf=st.period==="latest"?(dates[dates.length-1]||0):periodDay(st.period);
+    const o=obs.filter(x=>x.m===m.id&&x.r<=asOf).sort((a,b)=>a.r-b.r);
+    const r={m,asOf,n:o.length};
+    if(!o.length){r.status="Not Yet Started";return r;}
+    const cur=o[o.length-1],prev=o[o.length-2];
+    r.cur=cur.f;r.curRep=cur.r;r.actual=o.reduce((x,y)=>Math.max(x,y.a||0),0)||null;
+    r.var=r.cur-m.base;r.move=prev?cur.f-prev.f:null;r.tot=(r.actual||r.cur)-m.base;r.finish=r.actual||r.cur;
+    r.status=r.actual?"Completed":r.var>CFG.tol?"Delayed":r.var<-CFG.tol?"Ahead of Schedule":"On Schedule";
+    return r;
+  });
+}
+const catOk=r=>st.cat==="all"||r.m.cat===st.cat, stOk=r=>st.status==="all"||r.status===st.status;
+const inFilter=r=>(st.proj==="all"||r.m.p===st.proj)&&catOk(r)&&stOk(r);
+const openEsc=mid=>escs.find(e=>e.milestone_id===mid&&e.status==="Pending approval");
+function opt(sel,items,val){sel.innerHTML=items.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join("");sel.value=val;}
+function renderFilters(){
+  if(st.proj!=="all"&&!projects.some(p=>p.id===st.proj))st.proj="all";
+  opt($("f-proj"),[["all","All Projects"],...projects.map(p=>[p.id,`${p.name}${p.freq?" ("+p.freq.toLowerCase()+")":""}`])],st.proj);
+  const months=st.proj==="all"?[...new Set(projects.flatMap(p=>projMonths(p.id)))].sort():projMonths(st.proj);
+  if(st.period!=="latest"&&!months.includes(st.period))st.period="latest";
+  opt($("f-period"),[["latest","(Latest report)"],...months.slice().reverse().map(k=>[k,`${MON[+k.slice(5,7)-1]}-${k.slice(0,4)}`])],st.period);
+  opt($("f-cat"),[["all","All Categories"],...cats.map(c=>[c,c])],st.cat);
+  opt($("f-status"),[["all","All Statuses"],...STATUSES.map(s=>[s,s])],st.status);
+}
+function renderKPIs(rows){
+  const f=rows.filter(inFilter),c=s=>f.filter(r=>r.status===s).length,n=f.length||1;
+  const started=f.filter(r=>r.n>0),avg=started.length?started.reduce((a,r)=>a+r.tot,0)/started.length:0;
+  const fin=f.filter(r=>r.finish).reduce((a,r)=>Math.max(a,r.finish),0);
+  const pend=escs.filter(e=>e.status==="Pending approval"&&f.some(r=>r.m.id===e.milestone_id)).length;
+  const K=[["Milestones",f.length,`across ${new Set(f.map(r=>r.m.p)).size} project(s)`,"var(--accent)"],
+    ["Completed",c("Completed"),`${Math.round(c("Completed")/n*100)}%`,"var(--done)"],
+    ["Delayed",c("Delayed"),`${Math.round(c("Delayed")/n*100)}%`,"var(--late)"],
+    ["Ahead",c("Ahead of Schedule"),`${Math.round(c("Ahead of Schedule")/n*100)}%`,"var(--early)"],
+    ["On schedule",c("On Schedule"),`${Math.round(c("On Schedule")/n*100)}%`,"var(--on)"],
+    ["Average delay",(avg>0?"+":"")+avg.toFixed(1)+" d",`vs baseline, ${started.length} started`,"var(--amber)"],
+    ["Awaiting approval",pend,"open escalations","var(--amber)"],
+    ["Latest forecast finish",fin?fmt(fin):"–","forecast or actual","var(--accent)"]];
+  $("kpis").innerHTML=K.map(([l,v,s,col])=>`<div class="kpi" style="--k:${col}"><span class="l">${l}</span><span class="v" style="${l.startsWith("Latest")?"font-size:19px":""}">${v}</span><span class="s">${s}</span></div>`).join("");
+}
+function renderChart(rows){
+  $("refreshed").textContent="Refreshed on: "+new Date().toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  $("view-icicle").classList.toggle("on",st.view==="icicle");$("view-mta").classList.toggle("on",st.view!=="icicle");
+  $("mta-legend").hidden=st.view==="icicle";$("ilegend").hidden=st.view!=="icicle";
+  $("chart-axes").textContent=st.view==="icicle"?"X = forecast date (months) · Y = baseline, then each reporting month (latest report in the month)":"X = reporting date · Y = forecast completion date";
+  return st.view==="icicle"?renderIcicle(rows):renderMTA(rows);
+}
+function chartScope(rows){
+  const cp=st.proj==="all"?projects[0].id:st.proj,P=projects.find(p=>p.id===cp);
+  const dates=projDates(cp);const asOf=st.period==="latest"?(dates[dates.length-1]??todayDay()):periodDay(st.period);
+  const slots=rows.filter(r=>r.m.p===cp&&catOk(r)&&stOk(r)).slice(0,15);
+  return {cp,P,dates,asOf,slots};
+}
+function renderKey(series){
+  $("key").innerHTML=series.length?series.map(s=>{const r=s.r,mv=r.move,e=openEsc(r.m.id);
+    const ind=r.n===0?'<span class="note">not started</span>':mv===null?'<span class="note">◆ first</span>':mv>0?`<span class="mv-up">▲ ${mv}d</span>`:mv<0?`<span class="mv-dn">▼ ${-mv}d</span>`:'<span class="mv-eq">● 0</span>';
+    return `<label class="krow${s.hidden?" off":""}"><span class="sw" style="background:${s.col}"></span><span class="nm"><b>${esc(r.m.id)}</b> ${esc(r.m.name)} ${e?`<span class="lvl l${e.level}">L${e.level}</span>`:""}<small>${r.finish?fmt(r.finish):"baseline "+fmt(r.m.base)} · <span style="color:${SCOL[r.status]}">${r.status}</span> · ${ind}</small></span><input type="checkbox" data-id="${esc(r.m.id)}" ${s.hidden?"":"checked"} aria-label="Show ${esc(r.m.id)}"></label>`;}).join("")
+    :'<p class="empty">No milestones in this project match the filters.</p>';
+}
+function renderIcicle(rows){
+  const svg=$("chart"),NS="http://www.w3.org/2000/svg";svg.innerHTML="";
+  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';svg.setAttribute("viewBox","0 0 900 120");svg.innerHTML='<text x="450" y="64" text-anchor="middle" font-size="15">The chart appears once a project, its milestones and a monthly report exist.</text>';$("ilegend").innerHTML="";return;}
+  const {cp,P,asOf,slots}=chartScope(rows);
+  $("chart-title").textContent=`Milestone Icicle Chart · ${cp} ${P.name}`+(st.proj==="all"&&projects.length>1?" (first project, choose one above)":"");
+  const pobs=obs.filter(o=>msBy[o.m]?.p===cp&&o.r<=asOf);
+  const months=[...new Set(pobs.map(o=>monthKey(o.r)))].sort();
+  const rowsY=[P.bno?`Baseline ${P.bno}`:"Baseline",...months.map(monthLabel)];
+  const pend=msAll.filter(m=>m.p===cp&&m.status==="Pending");
+  const series=slots.map((r,i)=>{
+    const pts=[{row:0,x:r.m.base,base:true}];
+    months.forEach((k,j)=>{const o=pobs.filter(x=>x.m===r.m.id&&monthKey(x.r)===k).sort((a,b)=>b.r-a.r)[0];if(o)pts.push({row:j+1,x:o.f,o});});
+    return {r,col:PAL[i],pts,hidden:st.hidden.has(r.m.id)};
+  });
+  const vis=series.filter(s=>!s.hidden);
+  const xs=vis.flatMap(s=>s.pts.map(p=>p.x)).concat(pend.map(m=>m.base));
+  const W=900,L=96,R=24,T=66,RG=Math.max(46,Math.min(80,300/Math.max(1,rowsY.length-1))),H=T+20+(rowsY.length-1)*RG+30;
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  const el=(n,a,p=svg)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
+  if(!xs.length){el("text",{x:W/2,y:H/2,"text-anchor":"middle","font-size":14}).textContent="No forecasts to show for this selection.";renderKey(series);$("ilegend").innerHTML="";return;}
+  const first=d=>{const x=new Date(d*DAY);return day(new Date(Date.UTC(x.getUTCFullYear(),x.getUTCMonth(),1)).toISOString().slice(0,10));};
+  const addM=(d,n)=>{const x=new Date(d*DAY);return day(new Date(Date.UTC(x.getUTCFullYear(),x.getUTCMonth()+n,1)).toISOString().slice(0,10));};
+  const xa=addM(first(Math.min(...xs,P.start??Infinity)),-1),xb=addM(first(Math.max(...xs,P.end??-Infinity)),2);
+  const X=d=>L+(d-xa)/(xb-xa)*(W-L-R),Y=i=>T+20+i*RG;
+  const ticks=[];for(let d=xa;d<=xb;d=addM(d,1))ticks.push(d);
+  const step=Math.ceil(ticks.length/44);
+  el("rect",{x:L,y:T,width:W-L-R,height:H-T-10,fill:"none",stroke:"var(--line)"});
+  ticks.forEach((d,i)=>{el("line",{x1:X(d),x2:X(d),y1:T,y2:H-10,stroke:"var(--line)","stroke-width":i%step?0.4:1});
+    if(i%step===0){const x=new Date(d*DAY),lab=MON[x.getUTCMonth()]+"-"+String(x.getUTCFullYear()).slice(2);
+      el("text",{x:X(d)+3,y:T-6,"font-size":10.5,"font-weight":600,transform:`rotate(-90 ${X(d)+3} ${T-6})`}).textContent=lab;}});
+  [[P.start,"Project start"],[P.end,"Project end"]].forEach(([d,t])=>{if(d==null)return;el("line",{x1:X(d),x2:X(d),y1:T,y2:H-10,stroke:"var(--accent)","stroke-width":1.5,"stroke-dasharray":"2 3"});
+    el("text",{x:X(d)+4,y:H-14,"font-size":10.5,"font-weight":700,fill:"var(--accent)"}).textContent=t;});
+  rowsY.forEach((lab,i)=>{el("line",{x1:L-5,x2:L,y1:Y(i),y2:Y(i),stroke:"var(--muted)"});
+    el("text",{x:L-9,y:Y(i)+4,"text-anchor":"end","font-size":11.5,"font-weight":700,fill:"var(--ink)"}).textContent=lab;});
+  vis.forEach(s=>{
+    if(!s.pts.length)return;const g=el("g",{});
+    el("polyline",{points:s.pts.map(p=>X(p.x)+","+Y(p.row)).join(" "),fill:"none",stroke:s.col,"stroke-width":2,"stroke-dasharray":"4 3"},g);
+    s.pts.forEach((p,k)=>{
+      const x=X(p.x),y=Y(p.row),prev=k>1?s.pts[k-1]:null,mv=prev?p.x-prev.x:null;
+      if(mv!==null&&Math.abs(mv)>=CFG.sig)el("circle",{cx:x,cy:y,r:10,fill:"none",stroke:"#E00000","stroke-width":1.6},g);
+      const done=p.o&&p.o.a;
+      const c=el("path",{d:`M${x} ${y-7} l7 7 l-7 7 l-7 -7Z`,fill:s.col,stroke:done?"var(--ink)":"var(--surface)","stroke-width":done?2:1.2},g);
+      c.setAttribute("tabindex","0");c.style.cursor="pointer";
+      const vb=p.x-s.r.m.base;
+      const msg=p.base?`${s.r.m.id} ${s.r.m.name}: baseline ${fmt(p.x)}`:`${s.r.m.id} ${s.r.m.name} · ${rowsY[p.row]} report (${fmt(p.o.r)}): forecast ${fmt(p.x)} (${vb>0?"+":""}${vb} d vs baseline)`+(done?" · completed":"")+(p.o.c?` · “${p.o.c}”`:"");
+      const show=()=>{$("readout").textContent=msg;};["mouseenter","focus","click"].forEach(e=>c.addEventListener(e,show));
+    });
+  });
+  pend.forEach(m=>{const x=X(m.base),y=Y(0);const c=el("path",{d:`M${x} ${y-7} l7 7 l-7 7 l-7 -7Z`,fill:"var(--surface)",stroke:"var(--amber)","stroke-width":2,"stroke-dasharray":"3 2"});
+    c.setAttribute("tabindex","0");const msg=`${m.id} ${m.name}: proposed baseline ${fmt(m.base)} - awaiting approval (${m.note||"pending"})`;["mouseenter","focus","click"].forEach(e=>c.addEventListener(e,()=>{$("readout").textContent=msg;}));});
+  $("ilegend").innerHTML="<b>Legend</b>"+(pend.length?`<span><svg width="14" height="14"><path d="M7 1 13 7 7 13 1 7Z" fill="none" stroke="var(--amber)" stroke-width="2" stroke-dasharray="3 2"/></svg>${pend.length} milestone(s) awaiting baseline approval</span>`:"")+series.filter(s=>!s.hidden).map(s=>`<span style="color:${s.col}"><i></i><span style="color:var(--ink)">${esc(s.r.m.name)}</span></span>`).join("")+
+    `<span class="note">◆ with dark outline = completed · red ring = moved ≥ ${CFG.sig} d since the previous report</span>`;
+  renderKey(series);
+}
+function renderMTA(rows){
+  const svg=$("chart"),NS="http://www.w3.org/2000/svg";svg.innerHTML="";svg.setAttribute("viewBox","0 0 860 460");
+  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';svg.setAttribute("viewBox","0 0 900 120");svg.innerHTML='<text x="450" y="64" text-anchor="middle" font-size="15">The chart appears once a project, its milestones and a monthly report exist.</text>';$("ilegend").innerHTML="";return;}
+  const cp=st.proj==="all"?projects[0].id:st.proj,P=projects.find(p=>p.id===cp);
+  const dates=projDates(cp);const asOf=st.period==="latest"?(dates[dates.length-1]??todayDay()):periodDay(st.period);const ds=dates.filter(d=>d<=asOf);
+  const slots=rows.filter(r=>r.m.p===cp&&catOk(r)&&stOk(r)).slice(0,15);
+  $("chart-title").textContent=`MTA · ${cp} ${P.name}`+(ds.length?` (as of ${fmt(asOf)})`:"")+(st.proj==="all"&&projects.length>1?" · first project shown, choose one above":"");
+  const W=860,H=460,m={l:74,r:16,t:12,b:40};
+  const el=(n,a,p=svg)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
+  const series=slots.map((r,i)=>({r,col:PAL[i],pts:ds.map(d=>obs.find(o=>o.m===r.m.id&&o.r===d)).filter(Boolean),hidden:st.hidden.has(r.m.id)}));
+  if(!ds.length){el("text",{x:W/2,y:H/2,"text-anchor":"middle","font-size":14}).textContent="No reports recorded for this project yet.";}
+  else{
+    let ys=[ds[0],ds[ds.length-1]];series.forEach(s=>{if(!s.hidden)s.pts.forEach(p=>ys.push(p.f));});
+    const xa=ds[0]-7,xb=ds[ds.length-1]+7,ya=Math.min(...ys)-10,yb=Math.max(...ys)+10;
+    const X=d=>m.l+(d-xa)/(xb-xa)*(W-m.l-m.r),Y=d=>H-m.b-(d-ya)/(yb-ya)*(H-m.t-m.b);
+    const months=(a,b)=>{const out=[];const s=new Date(a*DAY);let d=new Date(Date.UTC(s.getUTCFullYear(),s.getUTCMonth()+1,1));while(d.getTime()/DAY<=b){out.push(Math.round(d.getTime()/DAY));d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1));}return out;};
+    const ml=d=>{const x=new Date(d*DAY);return MON[x.getUTCMonth()]+" "+String(x.getUTCFullYear()).slice(2);};
+    let yt=months(ya,yb);const ys2=Math.ceil(yt.length/9);yt=yt.filter((_,i)=>i%ys2===0);
+    yt.forEach(d=>{el("line",{x1:m.l,x2:W-m.r,y1:Y(d),y2:Y(d),stroke:"var(--line)"});el("text",{x:m.l-8,y:Y(d)+4,"text-anchor":"end","font-size":11}).textContent=ml(d);});
+    let xt=months(xa,xb);const xs2=Math.ceil(xt.length/8);xt=xt.filter((_,i)=>i%xs2===0);
+    xt.forEach(d=>{el("line",{x1:X(d),x2:X(d),y1:m.t,y2:H-m.b,stroke:"var(--line)"});el("text",{x:X(d),y:H-m.b+16,"text-anchor":"middle","font-size":11}).textContent=ml(d);});
+    ds.forEach(d=>el("line",{x1:X(d),x2:X(d),y1:H-m.b,y2:H-m.b+4,stroke:"var(--muted)"}));
+    el("text",{x:(W+m.l)/2,y:H-4,"text-anchor":"middle","font-size":11.5,"font-weight":600}).textContent="Reporting date (ticks = reports)";
+    el("text",{x:14,y:(H-m.b)/2,"text-anchor":"middle","font-size":11.5,"font-weight":600,transform:`rotate(-90 14 ${(H-m.b)/2})`}).textContent="Forecast completion date";
+    el("line",{x1:X(ds[0]),y1:Y(ds[0]),x2:X(ds[ds.length-1]),y2:Y(ds[ds.length-1]),stroke:"var(--muted)","stroke-width":1.5,"stroke-dasharray":"6 5"});
+    series.forEach(s=>{
+      if(s.hidden||!s.pts.length)return;const g=el("g",{});
+      el("polyline",{points:s.pts.map(p=>X(p.r)+","+Y(p.f)).join(" "),fill:"none",stroke:s.col,"stroke-width":2.4,"stroke-linejoin":"round"},g);
+      s.pts.forEach((p,k)=>{
+        const mv=k?p.f-s.pts[k-1].f:null,x=X(p.r),y=Y(p.f);
+        if(mv!==null&&Math.abs(mv)>=CFG.sig)el("circle",{cx:x,cy:y,r:9,fill:"none",stroke:"#E00000","stroke-width":2},g);
+        const c=p.a?el("path",{d:`M${x} ${y-7} l7 7 l-7 7 l-7 -7Z`,fill:s.col,stroke:"var(--surface)","stroke-width":1.5},g):el("circle",{cx:x,cy:y,r:4.3,fill:s.col,stroke:"var(--surface)","stroke-width":1.5},g);
+        c.setAttribute("tabindex","0");c.style.cursor="pointer";
+        const msg=`${s.r.m.id} ${s.r.m.name}: report ${fmt(p.r)} → forecast ${fmt(p.f)}`+(mv===null?" (first report)":mv>0?` (▲ ${mv} d later)`:mv<0?` (▼ ${-mv} d earlier)`:" (no change)")+(p.a?" · achieved":"")+(p.c?` · “${p.c}”`:"");
+        const show=()=>{$("readout").textContent=msg;};["mouseenter","focus","click"].forEach(e=>c.addEventListener(e,show));
+      });
+    });
+  }
+  renderKey(series);
+}
+function bars(elId,items,max){
+  $(elId).innerHTML=items.length?items.map(([t,n,col,extra])=>`<div class="bar"><span class="t" title="${esc(t)}">${esc(t)} ${extra||""}</span><span class="track"><span class="fill" style="width:${max?n/max*100:0}%;background:${col}"></span></span><span class="n">${n}</span></div>`).join(""):'<p class="empty">Nothing matches the current filters.</p>';
+}
+function renderInsights(rows){
+  const f=rows.filter(inFilter);
+  const sc=STATUSES.map(s=>[s,f.filter(r=>r.status===s).length,SCOL[s]]);bars("statusbars",sc,Math.max(1,...sc.map(x=>x[1])));
+  const top=f.filter(r=>r.n&&!r.actual&&r.tot>0).sort((a,b)=>b.tot-a.tot).slice(0,5).map(r=>{const e=openEsc(r.m.id);return[`${r.m.id} ${r.m.name}`,r.tot,"var(--late)",e?`<span class="lvl l${e.level}">L${e.level}</span>`:""];});
+  bars("top5",top,Math.max(1,...top.map(x=>x[1])));
+}
+// ------------------------------------------------ escalations
+function renderEscalations(){
+  const cnt=s=>escs.filter(e=>e.status===s).length;
+  const pend=cnt("Pending approval");$("pend-badge").hidden=!pend;$("pend-badge").textContent=pend;
+  $("esc-stats").innerHTML=[["Pending approval",pend],["Approved",cnt("Approved")],["Rejected",cnt("Rejected")],["Closed / superseded",cnt("Closed")+cnt("Superseded")]]
+    .map(([l,v])=>`<div class="kpi" style="--k:${SCOL[l.split(" /")[0]]||"var(--muted)"}"><span class="l">${l}</span><span class="v">${v}</span></div>`).join("");
+  const fv=$("esc-filter").value;
+  const list=escs.filter(e=>fv==="all"||e.status===fv||(fv==="Closed"&&e.status==="Superseded"));
+  $("esc-rows").innerHTML=list.length?list.map(e=>`<tr><td>${e.id}</td><td>${e.kind==="missed_update"?`<b>Missed update</b> · ${esc(e.discipline)}<br><span class="note">first missed due date ${fmt(day(e.period))}</span>`
+      :`<b>${esc(e.milestone_id)}</b> ${esc(e.milestone_name)}<br><span class="note">${esc(e.project_id)} · ${esc(e.discipline||"")} · owner ${esc(e.owner||"–")}</span>`}</td>
+    <td><span class="lvl l${e.level}">L${e.level}</span><br><span class="note">${esc(e.rule_name)}</span></td>
+    <td class="nw bad">${e.delay_days} d${e.kind==="missed_update"?" overdue":""}</td><td class="nw">${e.current_delay??"–"} d</td><td>${e.recipients?esc(e.recipients):'<span class="bad">Nobody: add emails to the rule or the responsibility matrix</span>'}</td>
+    <td><span class="pill" style="color:${SCOL[e.status]}">${esc(e.status)}</span></td><td class="nw">${esc(e.created_at)}</td>
+    <td>${e.status==="Pending approval"?`<div class="row">${e.kind==="missed_update"?`<button type="button" class="ok" data-act="Acknowledged" data-id="${e.id}">Acknowledge</button>`:`<button type="button" class="ok" data-act="Approved" data-id="${e.id}">Approve</button><button type="button" class="no" data-act="Rejected" data-id="${e.id}">Reject</button>`}</div><div class="decide" id="dec-${e.id}" hidden></div>`
+      :`${esc(e.decision||"")}${e.decided_by?` by <b>${esc(e.decided_by)}</b>`:""}<br><span class="note">${esc(e.decided_at||"")}${e.comment?" · “"+esc(e.comment)+"”":""}</span>`}</td></tr>`).join("")
+    :`<tr><td colspan="9" class="empty">No escalations in this view.</td></tr>`;
+}
+$("esc-filter").addEventListener("change",renderEscalations);
+$("esc-rows").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-act]");if(!b)return;const id=b.dataset.id,act=b.dataset.act,box=$("dec-"+id);
+  if(b.dataset.confirm){return;}
+  box.hidden=false;box.innerHTML=`<label class="f">Your name<input id="dn-${id}"></label><label class="f">Comment${act==="Rejected"?" (required: what recovery is needed)":""}<textarea id="dc-${id}" rows="2"></textarea></label>
+    <div class="row"><button type="button" class="${act==="Rejected"?"no":"ok"}" data-confirm="1" id="dg-${id}">Confirm ${({Approved:"approval",Rejected:"rejection",Acknowledged:"acknowledgement"})[act]}</button><span class="toast bad" id="de-${id}"></span></div>`;
+  $("dg-"+id).addEventListener("click",async()=>{
+    try{await api(`/api/escalations/${id}/decision`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision:act,name:$("dn-"+id).value,comment:$("dc-"+id).value})});await load();}
+    catch(err){$("de-"+id).textContent=err.message;}
+  });
+});
+$("btn-run").addEventListener("click",async()=>{try{const r=await api("/api/escalations/run",{method:"POST"});await load();alertToast(`Check complete: ${r.created} raised, ${r.closed} closed.`);}catch(e){alertToast(e.message,true);}});
+function alertToast(t,bad){const n=document.createElement("div");n.className="banner"+(bad?"":" good");n.textContent=t;n.setAttribute("role","status");$("v-escalations").prepend(n);setTimeout(()=>n.remove(),6000);}
+// ------------------------------------------------ rules
+let rules=[];
+async function loadRules(){rules=await api("/api/rules");renderRules();}
+function renderRules(){
+  $("rule-rows").innerHTML=rules.map((r,i)=>`<tr><td><input type="number" min="1" value="${r.level}" data-i="${i}" data-k="level" style="width:70px" aria-label="Level"></td>
+    <td><input value="${esc(r.name)}" data-i="${i}" data-k="name" aria-label="Rule name"></td>
+    <td><input type="number" min="1" value="${r.min_delay}" data-i="${i}" data-k="min_delay" style="width:110px" aria-label="Delay threshold in days"></td>
+    <td><input value="${esc(r.recipients)}" data-i="${i}" data-k="recipients" placeholder="Optional if discipline contacts are notified" aria-label="Recipients"></td>
+    <td><input type="checkbox" ${r.route_discipline!==0&&r.route_discipline!==false?"checked":""} data-i="${i}" data-k="route_discipline" style="width:18px;height:18px" aria-label="Notify discipline contacts"></td>
+    <td><input type="checkbox" ${r.active?"checked":""} data-i="${i}" data-k="active" style="width:18px;height:18px" aria-label="Active"></td>
+    <td><button type="button" class="ghost" data-del="${i}">Remove</button></td></tr>`).join("");
+}
+$("rule-rows").addEventListener("input",e=>{const i=e.target.dataset.i,k=e.target.dataset.k;if(i==null)return;rules[i][k]=(k==="active"||k==="route_discipline")?e.target.checked:(k==="level"||k==="min_delay")?+e.target.value:e.target.value;});
+$("rule-rows").addEventListener("click",e=>{const i=e.target.dataset.del;if(i!=null){rules.splice(+i,1);renderRules();}});
+$("btn-addrule").addEventListener("click",()=>{const mx=Math.max(0,...rules.map(r=>r.level)),md=Math.max(0,...rules.map(r=>r.min_delay));rules.push({level:mx+1,name:`Level ${mx+1} escalation`,min_delay:md+30,recipients:"",active:true,route_discipline:true});renderRules();});
+$("btn-saverules").addEventListener("click",async()=>{try{const r=await api("/api/rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(rules.map(r=>({...r,active:!!r.active,route_discipline:r.route_discipline!==0&&r.route_discipline!==false})))});$("rule-toast").innerHTML=`<span class="ok-t">Saved. ${r.created} escalation(s) raised, ${r.closed} closed.</span>`;await loadRules();await load();}catch(e){$("rule-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
+// ------------------------------------------------ monthly progress report
+const mr={proj:null,period:null,rows:{},bc:[{milestone_id:"",new_baseline:"",reason:""}],appr:null};
+const todayDay=()=>day(new Date().toISOString().slice(0,10));
+const nextKey=k=>{const y=+k.slice(0,4),m=+k.slice(5,7);return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`;};
+function projMonths(pid){
+  const P=projects.find(p=>p.id===pid);if(!P)return[];
+  const ds=obs.filter(o=>msBy[o.m]?.p===pid).map(o=>o.r);
+  const a=P.start??Math.min(todayDay(),...ds),b=P.end??Math.max(todayDay(),...ds);
+  const out=[];for(let k=monthKey(a);k<=monthKey(b);k=nextKey(k))out.push(k);return out;
+}
+function periodOptions(pid){return projMonths(pid).slice().reverse();}
+function defaultPeriod(pid){const all=projMonths(pid);if(!all.length)return null;const t=monthKey(todayDay());return t<all[0]?all[0]:t>all[all.length-1]?all[all.length-1]:t;}
+function mrInit(){
+  if(!mr.proj)return;
+  const opts=periodOptions(mr.proj);if(!mr.period||!opts.includes(mr.period))mr.period=defaultPeriod(mr.proj);
+  const rd=periodDay(mr.period);mr.rows={};
+  ms.filter(m=>m.p===mr.proj).forEach(m=>{
+    const mine=obs.filter(o=>o.m===m.id).sort((a,b)=>a.r-b.r);
+    const inPeriod=mine.filter(o=>monthKey(o.r)===mr.period).pop();
+    const before=mine.filter(o=>monthKey(o.r)<mr.period);
+    const doneBefore=before.find(o=>o.a);
+    const last=before[before.length-1];
+    let progress=inPeriod?.pg||(inPeriod?.a?"Completed":null)||(doneBefore?"Completed":before.length?"In progress":"Yet to start");
+    mr.rows[m.id]={locked:!!doneBefore,progress,completed:inPeriod?.a||doneBefore?.a||null,
+      forecast:inPeriod?(inPeriod.a?null:inPeriod.f):(last&&!doneBefore?last.f:(doneBefore?null:m.base)),reason:inPeriod?.c||"",prevF:last?.f??null};
+  });
+  mr.appr=(savedApprovers[mr.proj]||[]).slice();while(mr.appr.length<3)mr.appr.push("");
+  mr.bc=[{milestone_id:"",new_baseline:"",reason:""}];
+}
+function renderMonthly(){
+  if(!mr.proj){$("mr-head").innerHTML="";$("mr-rows").innerHTML='<tr><td class="empty">Add a project on Projects &amp; milestones first.</td></tr>';return;}
+  if(!mr.period)mrInit();
+  opt($("mr-proj"),projects.map(p=>[p.id,p.name]),mr.proj);
+  opt($("mr-period"),periodOptions(mr.proj).map(k=>[k,`${MON[+k.slice(5,7)-1]}-${k.slice(0,4)} (report date ${fmt(periodDay(k),true)})`]),mr.period);
+  const pms=ms.filter(m=>m.p===mr.proj);
+  const allM=projMonths(mr.proj),hist=allM.filter(k=>k<mr.period),fut=allM.filter(k=>k>mr.period);
+  if(!pms.length){$("mr-head").innerHTML="";$("mr-rows").innerHTML='<tr><td class="empty">This project has no milestones yet. Add them on Projects &amp; milestones.</td></tr>';}
+  else $("mr-head").innerHTML=`<tr><th>S.No</th><th>Project Milestone</th><th>Baseline Date</th><th>Progress</th><th>Completed</th>${hist.map(()=>"<th>Reporting Month Forecast</th>").join("")}<th class="cur" id="mr-curcol">Reporting Month Forecast</th><th>Variance (days)</th><th>Reason for variance</th>${fut.map(()=>"<th>Reporting Month Forecast</th>").join("")}</tr>
+    <tr class="sub"><th></th><th></th><th></th><th style="text-align:left">Completed, In progress, Yet to start</th><th></th>${hist.map(k=>`<th>${fmt(periodDay(k),true)}</th>`).join("")}<th class="cur">${fmt(periodDay(mr.period),true)}</th><th></th><th></th>${fut.map(k=>`<th>${fmt(periodDay(k),true)}</th>`).join("")}</tr>`;
+  if(pms.length)$("mr-rows").innerHTML=pms.map((m,i)=>{const r=mr.rows[m.id];const id=esc(m.id);
+    const hcells=hist.map(k=>{const o=obs.filter(x=>x.m===m.id&&monthKey(x.r)===k).sort((a,b)=>b.r-a.r)[0];return `<td class="num">${o?fmt(o.a||o.f,true):""}</td>`;}).join("");
+    const eff=r.progress==="Completed"?r.completed:r.forecast;const vb=eff!=null?eff-m.base:null;
+    const moved=!r.locked&&eff!=null&&r.prevF!=null&&eff!==r.prevF;const needR=moved&&!r.reason.trim();
+    return `<tr data-row="${id}"><td class="num">${i+1}</td><td>${esc(m.name)} <span class="note">${id}</span></td>
+      <td class="num">${fmt(m.base,true)}${pendingBase.has(m.id)?'<br><span class="warn" style="font-size:11px">change pending</span>':""}</td>
+      <td><select data-id="${id}" data-k="progress" ${r.locked?"disabled":""} aria-label="Progress ${id}">${["Completed","In progress","Yet to start"].map(x=>`<option ${x===r.progress?"selected":""}>${x}</option>`).join("")}</select></td>
+      <td><input type="date" data-id="${id}" data-k="completed" value="${r.completed?iso(r.completed):""}" ${r.locked||r.progress!=="Completed"?"disabled":""} aria-label="Completed date ${id}"></td>
+      ${hcells}
+      <td class="cur"><input type="date" data-id="${id}" data-k="forecast" value="${r.progress==="Completed"?(r.completed?iso(r.completed):""):(r.forecast?iso(r.forecast):"")}" ${r.locked||r.progress==="Completed"?"disabled":""} aria-label="Forecast ${id}"></td>
+      <td class="num c-var ${vb>0?"mv-up":vb<0?"mv-dn":""}">${vb==null?"":vb.toFixed(2)}</td>
+      <td><input class="reason${needR?" need":""}" data-id="${id}" data-k="reason" value="${esc(r.reason)}" ${r.locked?"disabled":""} placeholder="${moved?"Required: forecast moved":""}" style="min-width:220px" aria-label="Reason for variance ${id}"></td>
+      ${fut.map(()=>'<td style="background:var(--bg)"></td>').join("")}</tr>`;}).join("");
+  const cc=$("mr-curcol");if(cc&&mr.scrolled!==mr.proj+mr.period){mr.scrolled=mr.proj+mr.period;const sc=cc.closest(".scroll");const right=cc.offsetLeft+cc.offsetWidth;if(sc.clientWidth&&right>sc.clientWidth)sc.scrollLeft=right-sc.clientWidth+24;}
+  const opts=[["","Choose milestone"],...pms.filter(m=>!pendingBase.has(m.id)).map(m=>[m.id,`${m.id} ${m.name}`])];
+  $("bc-rows").innerHTML=mr.bc.map((b,i)=>{const m=msBy[b.milestone_id];const nb=b.new_baseline?day(b.new_baseline):null;
+    return `<tr data-bi-row="${i}"><td><select data-bi="${i}" data-k="milestone_id" aria-label="Milestone for baseline change">${opts.map(([v,t])=>`<option value="${esc(v)}" ${v===b.milestone_id?"selected":""}>${esc(t)}</option>`).join("")}</select></td>
+      <td class="num c-cur">${m?fmt(m.base,true):""}</td><td><input type="date" data-bi="${i}" data-k="new_baseline" value="${esc(b.new_baseline)}" aria-label="New baseline"></td>
+      <td class="num c-chg">${m&&nb?((nb-m.base>0?"+":"")+(nb-m.base)+" d"):""}</td>
+      <td><input class="reason" data-bi="${i}" data-k="reason" value="${esc(b.reason)}" style="min-width:260px" aria-label="Reason for baseline change"></td>
+      <td><button type="button" class="ghost" data-bdel="${i}">Remove</button></td></tr>`;}).join("");
+  const ch=(workflows[mr.proj]||{}).rebaseline||[];
+  $("rb-chain").innerHTML=ch.length?"Approval: "+ch.map(([l,n,id])=>`Level ${l} <b>${esc(n)}</b>${id?" ("+esc(id)+")":""}`).join(" → ")+' <span class="note">(set on Project Setup)</span>'
+    :'<span class="bad">No rebaseline approval workflow is set for this project. Set it on <a href="#projects">Project Setup</a> first.</span>';
+}
+$("mr-proj").addEventListener("change",e=>{mr.proj=e.target.value;mr.period=null;renderMonthly();});
+$("mr-period").addEventListener("change",e=>{mr.period=e.target.value;const p=mr.proj;mr.proj=p;const keep={bc:mr.bc,appr:mr.appr};mrInit();Object.assign(mr,keep);renderMonthly();});
+$("mr-rows").addEventListener("change",e=>{const id=e.target.dataset.id,k=e.target.dataset.k;if(!id)return;const r=mr.rows[id];
+  if(k==="progress"){r.progress=e.target.value;if(r.progress!=="Completed")r.completed=null;}
+  else if(k==="completed")r.completed=e.target.value?day(e.target.value):null;
+  else if(k==="forecast")r.forecast=e.target.value?day(e.target.value):null;
+  else r.reason=e.target.value;updateMrRow(id);});
+function updateMrRow(id){
+  const tr=[...$("mr-rows").querySelectorAll("tr[data-row]")].find(t=>t.dataset.row===id);if(!tr)return;
+  const r=mr.rows[id],m=msBy[id],q=k=>tr.querySelector(`[data-k="${k}"]`);
+  const comp=q("completed"),fc=q("forecast"),rs=q("reason"),vc=tr.querySelector(".c-var");
+  comp.disabled=r.locked||r.progress!=="Completed";if(r.progress!=="Completed")comp.value="";
+  fc.disabled=r.locked||r.progress==="Completed";
+  fc.value=r.progress==="Completed"?(r.completed?iso(r.completed):""):(r.forecast?iso(r.forecast):"");
+  const eff=r.progress==="Completed"?r.completed:r.forecast,vb=eff!=null?eff-m.base:null;
+  vc.textContent=vb==null?"":vb.toFixed(2);vc.className="num c-var "+(vb>0?"mv-up":vb<0?"mv-dn":"");
+  const moved=!r.locked&&eff!=null&&r.prevF!=null&&eff!==r.prevF;
+  rs.classList.toggle("need",moved&&!r.reason.trim());rs.placeholder=moved?"Required: forecast moved":"";
+}
+$("bc-rows").addEventListener("change",e=>{const i=e.target.dataset.bi;if(i==null)return;mr.bc[i][e.target.dataset.k]=e.target.value;
+  const tr=e.target.closest("tr"),b=mr.bc[i],m=msBy[b.milestone_id],nb=b.new_baseline?day(b.new_baseline):null;
+  tr.querySelector(".c-cur").textContent=m?fmt(m.base,true):"";tr.querySelector(".c-chg").textContent=m&&nb?((nb-m.base>0?"+":"")+(nb-m.base)+" d"):"";});
+$("bc-rows").addEventListener("click",e=>{const i=e.target.dataset.bdel;if(i!=null){mr.bc.splice(+i,1);if(!mr.bc.length)mr.bc.push({milestone_id:"",new_baseline:"",reason:""});renderMonthly();}});
+$("bc-add").addEventListener("click",()=>{mr.bc.push({milestone_id:"",new_baseline:"",reason:""});renderMonthly();});
+
+$("mr-submit").addEventListener("click",async()=>{
+  const rows=Object.entries(mr.rows).filter(([,r])=>!r.locked).map(([id,r])=>({milestone_id:id,progress:r.progress,
+    completed:r.progress==="Completed"&&r.completed?iso(r.completed):null,forecast:r.progress!=="Completed"&&r.forecast?iso(r.forecast):null,reason:r.reason}));
+  const bc=mr.bc.filter(b=>b.milestone_id||b.new_baseline);
+  const payload={project_id:mr.proj,period:mr.period,submitted_by:$("mr-by").value,submitter_email:$("mr-email").value,rows,baseline_changes:bc};
+  $("mr-toast").textContent="Saving…";
+  try{const r=await api("/api/monthly",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    $("mr-toast").innerHTML=`<span class="ok-t">Saved ${r.saved} forecast(s) for ${fmt(day(r.rep_date))}.${r.request_id?` Baseline change request #${r.request_id} sent to the L1 approver.`:""} ${r.created} escalation(s) raised, ${r.closed} closed.</span>`;
+    const keepP=mr.period;await load();mr.period=keepP;mrInit();renderMonthly();}
+  catch(e){$("mr-toast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
+});
+// ------------------------------------------------ project setup
+const ps={pid:null,isNew:false,setup:null,newRows:[],rbOpen:false,rb:null,askFn:null};
+const PRIOS=["","Critical","High","Medium","Low"];
+async function loadSetup(){
+  if(!projects.some(p=>p.id===ps.pid))ps.pid=projects[0]?.id||null;
+  if(!ps.pid||ps.isNew){ps.setup=null;renderSetup();return;}
+  try{ps.setup=await api(`/api/projects/${encodeURIComponent(ps.pid)}/setup`);}catch(e){ps.setup=null;}
+  const d=ps.setup?.rebaseline_draft;ps.rb=null;
+  if(d){ps.rb={changes:{},news:[],reason:""};d.items.forEach(i=>{if(i.old_baseline)ps.rb.changes[i.milestone_id]={nb:i.new_baseline,reason:i.reason||""};});
+    ps.setup.milestones.filter(m=>m.rebase_req===d.id&&m.baseline_status==="Draft").forEach(m=>ps.rb.news.push({id:m.id,name:m.name,category:m.category||"",baseline:m.baseline,owner:m.owner||"",priority:m.priority||""}));
+    ps.rb.reason=(d.items.find(i=>!i.old_baseline)||{}).reason||"";}
+  renderSetup();
+}
+function wfRows(key){const lv=ps.isNew||!ps.setup?[]:ps.setup.workflows[key]||[];
+  return [1,2,3].map(l=>{const v=lv.find(x=>x.level===l)||{};return `<tr><td><b>Level ${l}</b></td><td><input data-wf="${key}" data-l="${l}" data-k="name" value="${esc(v.name||"")}" placeholder="Name" aria-label="${key} level ${l} name"></td>
+    <td><input data-wf="${key}" data-l="${l}" data-k="person_id" value="${esc(v.person_id||"")}" placeholder="ID" aria-label="${key} level ${l} ID"></td>
+    <td><input data-wf="${key}" data-l="${l}" data-k="email" type="email" value="${esc(v.email||"")}" placeholder="${ps.setup&&!ps.setup.admin&&v.name?"(sign in to see)":"name@company.com"}" aria-label="${key} level ${l} email"></td></tr>`;}).join("");}
+function msRow(m,i,isNew){const st=isNew?"New":m.baseline_status||"Approved";const lockAll=st==="Pending";const lockBase=lockAll||st==="Approved";const k=isNew?`new-${i}`:m.id;
+  const P=projects.find(p=>p.id===ps.pid)||{};
+  return `<tr data-ms="${esc(k)}" ${isNew?'data-new="1"':""}><td class="num">${i+1}</td>
+    <td>${isNew?`<input data-f="id" value="${esc(m.id||"")}" placeholder="e.g. M${String(i+1).padStart(2,"0")}" style="width:110px" aria-label="Milestone ID">`:`<b>${esc(m.id)}</b>`}</td>
+    <td><input data-f="name" value="${esc(m.name||"")}" ${lockAll?"disabled":""} placeholder="e.g. Engineering" style="min-width:190px" aria-label="Milestone name"></td>
+    <td><input data-f="category" list="disc-list" value="${esc(m.category||"")}" ${lockAll?"disabled":""} placeholder="Discipline" style="width:130px" aria-label="Discipline"></td>
+    <td><input data-f="baseline" type="date" value="${esc(m.baseline||"")}" ${lockBase?"disabled":""} min="${P.start!=null?iso(P.start):""}" max="${P.end!=null?iso(P.end):""}" aria-label="Baseline date"></td>
+    <td><input data-f="owner" value="${esc(m.owner||"")}" ${lockAll?"disabled":""} placeholder="Name" style="width:120px" aria-label="Owner"></td>
+    <td><select data-f="priority" ${lockAll?"disabled":""} aria-label="Priority">${PRIOS.map(x=>`<option value="${x}" ${x===(m.priority||"")?"selected":""}>${x||"–"}</option>`).join("")}</select></td>
+    <td>${isNew?'<span class="st st-Draft">New</span>':`<span class="st st-${st}">${st==="Approved"?"In baseline":st==="Pending"?"Awaiting approval":st}</span>`}${!isNew&&m.status_note&&st!=="Approved"?`<br><span class="note" style="font-size:11px">${esc(m.status_note)}</span>`:""}</td>
+    <td>${isNew?`<button type="button" class="ghost" data-rmnew="${i}">Remove</button>`:(st==="Draft"||st==="Rejected")?`<button type="button" class="ghost" data-delms="${esc(m.id)}">Delete</button>`:""}</td></tr>`;}
+function renderSetup(){
+  opt($("ps-proj"),[...projects.map(p=>[p.id,`${p.id}  ${p.name}`]),...(ps.isNew?[["__new","(new project)"]]:[])],ps.isNew?"__new":(ps.pid||""));
+  const pr=ps.isNew?{}:(ps.setup?.project||{});
+  const set=(id,v)=>{$(id).value=v||"";};
+  set("ps-id",pr.id);set("ps-name",pr.name);set("ps-start",pr.start_date);set("ps-end",pr.end_date);set("ps-cname",pr.controls_name);set("ps-cid",pr.controls_id);set("ps-pm",pr.manager);set("ps-pmid",pr.manager_id);
+  $("ps-id").disabled=!ps.isNew&&!!pr.id;$("ps-del").hidden=ps.isNew||!pr.id;
+  $("wf-addition").innerHTML=wfRows("addition");$("wf-rebaseline").innerHTML=wfRows("rebaseline");
+  const card=$("ps-ms-card");card.hidden=ps.isNew||!ps.setup;$("ps-rb").hidden=card.hidden||!ps.rbOpen;
+  if(card.hidden)return;
+  const all=ps.setup.milestones;const cnt=s=>all.filter(m=>(m.baseline_status||"Approved")===s).length;
+  const bno=pr.baseline_no||0;
+  $("ps-bline").innerHTML=cnt("Approved")?`Current: Baseline ${bno}`:"No approved baseline yet";
+  const rbPending=ps.setup.requests.some(r=>r.kind==="rebaseline"&&r.status.startsWith("Pending"));
+  $("ps-rb-open").disabled=!cnt("Approved")||rbPending;
+  $("ps-rb-open").textContent=ps.setup.rebaseline_draft?`Continue Baseline ${bno+1} draft`:`Rebaseline / New baseline ${bno+1}`;
+  $("ps-rb-open").title=!cnt("Approved")?"Available once the first baseline is approved":rbPending?"A rebaseline is awaiting approval":"";
+  $("ps-counts").innerHTML=[["Approved","In baseline"],["Pending","Awaiting approval"],["Draft","Draft"],["Rejected","Rejected"]].map(([k,l])=>`<span class="st st-${k}">${l}: ${cnt(k)}</span>`).join(" ");
+  const own=all.filter(m=>!(m.rebase_req&&m.baseline_status==="Draft"));
+  $("ps-ms").innerHTML=own.map((m,i)=>msRow(m,i,false)).join("")+ps.newRows.map((m,i)=>msRow(m,own.length+i,true).replace(`data-ms="new-${own.length+i}"`,`data-ms="new-${i}"`).replace(`data-rmnew="${own.length+i}"`,`data-rmnew="${i}"`)).join("")
+    ||'<tr><td colspan="9" class="empty">No milestones yet. Click "+ Add milestone row".</td></tr>';
+  $("disc-list").innerHTML=[...new Set([...(mx.rows||[]).filter(r=>r.active).map(r=>r.discipline),...cats])].map(d=>`<option value="${esc(d)}">`).join("");
+  $("ps-req").innerHTML=ps.setup.requests.length?ps.setup.requests.map(d=>`<tr><td>${d.id}</td><td>${d.kind==="addition"?"Addition into baseline":`Rebaseline${d.baseline_no!=null?" → Baseline "+d.baseline_no:""}`}</td>
+    <td>${d.items.map(i=>`<b>${esc(i.milestone_id)}</b> ${i.old_baseline?`${fmt(day(i.old_baseline),true)} → ${fmt(day(i.new_baseline),true)}`:`new · ${fmt(day(i.new_baseline),true)}`}`).join("<br>")}</td>
+    <td class="nw">${esc(d.requested_by||"")}<br><span class="note">${esc(d.created_at||"")}</span></td>
+    <td><div class="chain">${d.approvals.map(a=>`<span class="${a.status}">L${a.level} ${esc(a.approver_name||"")} · ${esc(a.status)}</span>`).join("")}</div>${d.approvals.filter(a=>a.link).map(a=>`<a href="${esc(a.link)}" target="_blank" rel="noopener">Open Level ${a.level} approval page</a>`).join("")}</td>
+    <td><span class="pill" style="color:${d.status==="Approved"?"var(--early)":d.status.startsWith("Rejected")?"var(--late)":"var(--amber)"}">${esc(d.status)}</span></td></tr>`).join("")
+    :'<tr><td colspan="6" class="empty">No approval requests yet.</td></tr>';
+  if(ps.rbOpen)renderRebaseline();
+}
+function renderRebaseline(){
+  const bno=(ps.setup.project.baseline_no||0)+1;$("ps-rb-title").textContent=`Rebaseline - Baseline ${bno}`+(ps.setup.rebaseline_draft?" (draft)":"");
+  if(!ps.rb)ps.rb={changes:{},news:[],reason:""};
+  const appr=ps.setup.milestones.filter(m=>(m.baseline_status||"Approved")==="Approved");const P=projects.find(p=>p.id===ps.pid)||{};
+  $("rb-ch").innerHTML=appr.map(m=>{const c=ps.rb.changes[m.id]||{};const d=c.nb?day(c.nb)-day(m.baseline):null;
+    return `<tr data-rb="${esc(m.id)}"><td><b>${esc(m.id)}</b></td><td>${esc(m.name)}</td><td class="num">${fmt(day(m.baseline),true)}</td>
+    <td><input type="date" data-k="nb" value="${esc(c.nb||"")}" min="${P.start!=null?iso(P.start):""}" max="${P.end!=null?iso(P.end):""}" aria-label="New baseline ${esc(m.id)}"></td>
+    <td class="num c-chg ${d>0?"mv-up":d<0?"mv-dn":""}">${d?((d>0?"+":"")+d+" d"):""}</td>
+    <td><input class="reason" data-k="reason" value="${esc(c.reason||"")}" style="min-width:220px" aria-label="Reason ${esc(m.id)}"></td></tr>`;}).join("");
+  $("rb-new").innerHTML=ps.rb.news.map((m,i)=>`<tr data-rbn="${i}"><td><input data-f="id" value="${esc(m.id)}" style="width:110px" aria-label="New milestone ID"></td>
+    <td><input data-f="name" value="${esc(m.name)}" style="min-width:180px" aria-label="New milestone name"></td><td><input data-f="category" list="disc-list" value="${esc(m.category)}" style="width:130px" aria-label="Discipline"></td>
+    <td><input data-f="baseline" type="date" value="${esc(m.baseline)}" aria-label="Baseline date"></td><td><input data-f="owner" value="${esc(m.owner)}" style="width:120px" aria-label="Owner"></td>
+    <td><select data-f="priority" aria-label="Priority">${PRIOS.map(x=>`<option value="${x}" ${x===m.priority?"selected":""}>${x||"–"}</option>`).join("")}</select></td>
+    <td><button type="button" class="ghost" data-rbdel="${i}">Remove</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">None. Click "+ Add new milestone" to add one to this baseline.</td></tr>';
+  $("rb-newreason").value=ps.rb.reason||"";
+}
+function collectNewRows(){document.querySelectorAll('#ps-ms tr[data-new]').forEach(tr=>{const i=+tr.dataset.ms.split("-")[1];const g=f=>tr.querySelector(`[data-f="${f}"]`).value;
+  ps.newRows[i]={id:g("id"),name:g("name"),category:g("category"),baseline:g("baseline"),owner:g("owner"),priority:g("priority")};});}
+function ask(title,text,yes,no,fn){$("ask-title").textContent=title;$("ask-text").innerHTML=text;$("ask-yes").textContent=yes;$("ask-no").textContent=no;ps.askFn=fn;$("ask-dlg").showModal();}
+$("ask-yes").addEventListener("click",()=>{$("ask-dlg").close();ps.askFn&&ps.askFn(true);});
+$("ask-no").addEventListener("click",()=>{$("ask-dlg").close();ps.askFn&&ps.askFn(false);});
+$("ask-cancel").addEventListener("click",()=>$("ask-dlg").close());
+function chainText(key){const lv=(ps.setup?.workflows?.[key]||[]).filter(x=>x.name);return lv.length?lv.map(x=>`Level ${x.level} <b>${esc(x.name)}</b>${x.person_id?" ("+esc(x.person_id)+")":""}`).join(" → "):null;}
+$("ps-proj").addEventListener("change",e=>{if(e.target.value==="__new")return;ps.pid=e.target.value;ps.isNew=false;ps.newRows=[];ps.rbOpen=false;loadSetup();});
+$("ps-new").addEventListener("click",()=>{ps.isNew=true;ps.newRows=[];ps.rbOpen=false;ps.setup=null;renderSetup();$("ps-id").focus();});
+$("ps-save").addEventListener("click",async()=>{
+  const wf={};["addition","rebaseline"].forEach(k=>{wf[k]=[1,2,3].map(l=>{const g=f=>document.querySelector(`[data-wf="${k}"][data-l="${l}"][data-k="${f}"]`).value;return{name:g("name"),person_id:g("person_id"),email:g("email")};});});
+  const body={id:$("ps-id").value,name:$("ps-name").value,start_date:$("ps-start").value,end_date:$("ps-end").value,controls_name:$("ps-cname").value,controls_id:$("ps-cid").value,manager:$("ps-pm").value,manager_id:$("ps-pmid").value,workflows:wf};
+  try{if(ps.isNew){const r=await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});ps.pid=r.id;ps.isNew=false;mr.proj=r.id;mr.period=null;}
+    else await api(`/api/projects/${encodeURIComponent(ps.pid)}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    $("ps-toast").innerHTML='<span class="ok-t">Project setup saved.</span>';await load();await loadSetup();}
+  catch(e){$("ps-toast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
+});
+$("ps-del").addEventListener("click",async()=>{try{await api(`/api/projects/${encodeURIComponent(ps.pid)}`,{method:"DELETE"});ps.pid=null;$("ps-toast").innerHTML='<span class="ok-t">Project deleted.</span>';await load();await loadSetup();}catch(e){$("ps-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
+$("ps-addrow").addEventListener("click",()=>{collectNewRows();ps.newRows.push({id:"",name:"",category:"",baseline:"",owner:"",priority:""});renderSetup();});
+$("ps-ms").addEventListener("click",async e=>{
+  if(e.target.dataset.rmnew!=null){collectNewRows();ps.newRows.splice(+e.target.dataset.rmnew,1);renderSetup();return;}
+  if(e.target.dataset.delms){collectNewRows();try{await api(`/api/milestones/${encodeURIComponent(e.target.dataset.delms)}`,{method:"DELETE"});await load();await loadSetup();}catch(x){$("ps-mstoast").innerHTML=`<span class="bad">${esc(x.message)}</span>`;}}
+});
+function gatherMilestones(){collectNewRows();const out=[];
+  document.querySelectorAll('#ps-ms tr[data-ms]:not([data-new])').forEach(tr=>{const m=ps.setup.milestones.find(x=>x.id===tr.dataset.ms);if(!m||m.baseline_status==="Pending")return;const g=f=>tr.querySelector(`[data-f="${f}"]`).value;
+    out.push({id:m.id,name:g("name"),category:g("category"),baseline:g("baseline"),owner:g("owner"),priority:g("priority"),description:m.description||""});});
+  ps.newRows.filter(r=>r.id||r.name||r.baseline).forEach(r=>out.push(r));return out;}
+async function sendMilestones(submit){
+  const body={milestones:gatherMilestones(),submit,submitted_by:$("ps-by").value,submitter_email:$("ps-byemail").value};
+  try{const r=await api(`/api/projects/${encodeURIComponent(ps.pid)}/milestones`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    ps.newRows=[];$("ps-mstoast").innerHTML=`<span class="ok-t">${submit?`Approval workflow started (request #${r.request_id}). Level 1 has been notified; the milestones show on the dashboard baseline as awaiting approval.`:"Saved as draft. Click Save milestones again when the list is complete."}</span>`;
+    await load();await loadSetup();}
+  catch(e){$("ps-mstoast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
+}
+$("ps-savems").addEventListener("click",()=>{
+  const list=gatherMilestones();const drafts=list.filter(m=>{const ex=ps.setup.milestones.find(x=>x.id===m.id);return !ex||["Draft","Rejected"].includes(ex.baseline_status);});
+  if(!drafts.length){sendMilestones(false);return;}
+  const ch=chainText("addition");
+  ask("Are the milestones complete?",`${drafts.length} milestone(s) are not yet in the baseline.<br><br><b>Yes</b> starts the approval workflow for addition into the baseline: ${ch||'<span class="bad">no workflow set - fill "For addition of milestones into baseline" above and save the project first</span>'}.<br><b>No</b> saves them as a draft.`,
+    "Yes - start approval workflow","No - save as draft",y=>sendMilestones(y));
+});
+$("ps-rb-open").addEventListener("click",()=>{ps.rbOpen=true;renderSetup();$("ps-rb").scrollIntoView({behavior:"smooth",block:"start"});});
+$("ps-rb-close").addEventListener("click",()=>{ps.rbOpen=false;renderSetup();});
+$("rb-ch").addEventListener("change",e=>{const tr=e.target.closest("tr[data-rb]");if(!tr)return;const id=tr.dataset.rb;const c=ps.rb.changes[id]||(ps.rb.changes[id]={nb:"",reason:""});
+  c[e.target.dataset.k]=e.target.value;const m=ps.setup.milestones.find(x=>x.id===id);const d=c.nb?day(c.nb)-day(m.baseline):null;const cell=tr.querySelector(".c-chg");
+  cell.textContent=d?((d>0?"+":"")+d+" d"):"";cell.className="num c-chg "+(d>0?"mv-up":d<0?"mv-dn":"");});
+function collectRbNew(){document.querySelectorAll("#rb-new tr[data-rbn]").forEach(tr=>{const i=+tr.dataset.rbn,g=f=>tr.querySelector(`[data-f="${f}"]`).value;
+  ps.rb.news[i]={id:g("id"),name:g("name"),category:g("category"),baseline:g("baseline"),owner:g("owner"),priority:g("priority")};});ps.rb.reason=$("rb-newreason").value;}
+$("rb-addrow").addEventListener("click",()=>{collectRbNew();ps.rb.news.push({id:"",name:"",category:"",baseline:"",owner:"",priority:""});renderRebaseline();});
+$("rb-new").addEventListener("click",e=>{if(e.target.dataset.rbdel!=null){collectRbNew();ps.rb.news.splice(+e.target.dataset.rbdel,1);renderRebaseline();}});
+async function sendRebaseline(submit){
+  collectRbNew();
+  const body={changes:Object.entries(ps.rb.changes).filter(([,c])=>c.nb).map(([id,c])=>({milestone_id:id,new_baseline:c.nb,reason:c.reason||""})),
+    new_milestones:ps.rb.news.filter(m=>m.id||m.name||m.baseline),new_reason:ps.rb.reason,submit,submitted_by:$("ps-by").value,submitter_email:$("ps-byemail").value};
+  try{const r=await api(`/api/projects/${encodeURIComponent(ps.pid)}/rebaseline`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    $("rb-toast").innerHTML=`<span class="ok-t">${submit?`Baseline ${r.baseline_no} sent for approval (request #${r.request_id}). Level 1 has been notified.`:"Rebaseline saved as draft."}</span>`;
+    if(submit)ps.rbOpen=false;await load();await loadSetup();if(submit)$("ps-mstoast").innerHTML=`<span class="ok-t">Baseline ${r.baseline_no} sent for approval (request #${r.request_id}).</span>`;}
+  catch(e){$("rb-toast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
+}
+$("rb-save").addEventListener("click",()=>{collectRbNew();const n=Object.values(ps.rb.changes).filter(c=>c.nb).length,k=ps.rb.news.filter(m=>m.id||m.name).length;const ch=chainText("rebaseline");
+  ask("Is the rebaseline complete?",`${n} date change(s) and ${k} new milestone(s).<br><br><b>Yes</b> starts the rebaseline approval workflow: ${ch||'<span class="bad">no workflow set - fill "For rebaseline of milestones" above and save the project first</span>'}.<br><b>No</b> saves it as a draft.`,
+    "Yes - start approval workflow","No - save as draft",y=>sendRebaseline(y));});
+$("rb-discard").addEventListener("click",async()=>{try{await api(`/api/projects/${encodeURIComponent(ps.pid)}/rebaseline`,{method:"DELETE"});ps.rb=null;ps.rbOpen=false;await load();await loadSetup();}catch(e){$("rb-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
+// ------------------------------------------------ baseline requests list
+async function loadBaselineRequests(){blreqs=await api("/api/baseline-requests");renderBaselineRequests();}
+function renderBaselineRequests(){
+  $("bl-rows").innerHTML=blreqs.length?blreqs.map(d=>`<tr><td>${d.id}</td><td>${esc(d.project_id)}<br><span class="note">${esc(d.project_name)}</span></td>
+    <td>${d.items.map(i=>`<b>${esc(i.milestone_id)}</b> ${i.old_baseline?`${fmt(day(i.old_baseline),true)} → <b>${fmt(day(i.new_baseline),true)}</b>`:`new · <b>${fmt(day(i.new_baseline),true)}</b>`}<br><span class="note">${esc(i.reason||"")}</span>`).join("<br>")}</td>
+    <td class="nw">${esc(d.requested_by||"")}<br><span class="note">${esc(d.created_at||"")} · period ${esc(d.period||"")}</span></td>
+    <td><span class="note">${d.kind==="addition"?"Addition into baseline":"Rebaseline"}</span><div class="chain">${d.approvals.map(a=>`<span class="${a.status}">L${a.level} ${esc(a.approver_name||a.approver)} · ${esc(a.status)}${a.decided_by?" · "+esc(a.decided_by):""}</span>`).join("")}</div>${d.approvals.filter(a=>a.link).map(a=>`<br><a href="${esc(a.link)}" target="_blank" rel="noopener">Open L${a.level} approval page</a>`).join("")}</td>
+    <td><span class="pill" style="color:${d.status==="Approved"?"var(--early)":d.status.startsWith("Rejected")?"var(--late)":"var(--amber)"}">${esc(d.status)}</span></td></tr>`).join("")
+    :'<tr><td colspan="6" class="empty">No baseline change requests yet. Raise one from Data entry → Monthly progress report.</td></tr>';
+}
+$("m-upload").addEventListener("click",async()=>{
+  const fs=$("m-files").files;if(!fs.length){$("m-toast").innerHTML='<span class="bad">Choose at least one CSV file.</span>';return;}
+  const fd=new FormData();[...fs].forEach(f=>fd.append("files",f));fd.append("date_culture",$("m-culture").value);
+  $("m-toast").textContent="Importing…";
+  try{const r=await api("/api/import/msp",{method:"POST",body:fd});
+    $("m-toast").innerHTML=`<span class="ok-t">Imported ${r.files} file(s): ${r.added} new observations, ${r.new_milestones} new milestones, ${r.new_projects} new projects (${r.skipped_existing} already recorded). ${r.created} escalation(s) raised.</span>`;await load();}
+  catch(e){$("m-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}
+});
+let resetArmed=false;
+$("btn-reset").addEventListener("click",async()=>{
+  if(!resetArmed){resetArmed=true;$("btn-reset").textContent="Click again to delete ALL projects, milestones, forecasts and escalations";$("reset-toast").textContent="";setTimeout(()=>{resetArmed=false;$("btn-reset").textContent="Delete all data";},5000);return;}
+  resetArmed=false;$("btn-reset").textContent="Delete all data";
+  try{await api("/api/reset",{method:"POST"});$("reset-toast").textContent="All project data deleted. Rules and the responsibility matrix are kept.";mr.proj=null;await load();}catch(e){$("reset-toast").textContent=e.message;}
+});
+function renderLog(){
+  const recent=obs.slice().sort((a,b)=>b.seq-a.seq).slice(0,15);$("log-count").textContent=`${obs.length} observations`;
+  if(!recent.length){$("log").innerHTML='<tr><td colspan="6" class="empty">No forecasts recorded yet. Submit a monthly progress report above.</td></tr>';return;}
+  $("log").innerHTML=recent.map(o=>{const prev=obs.filter(x=>x.m===o.m&&x.r<o.r).sort((a,b)=>b.r-a.r)[0];const mv=prev?o.f-prev.f:null;const m=msBy[o.m]||{name:""};
+    return `<tr><td><b>${esc(o.m)}</b> ${esc(m.name)}</td><td class="nw">${fmt(o.r)}</td><td class="nw">${fmt(o.f)}</td><td class="nw">${o.a?fmt(o.a):""}</td>
+    <td class="nw">${mv===null?"◆ First report":mv>0?`<span class="mv-up">▲ +${mv} d</span>`:mv<0?`<span class="mv-dn">▼ ${mv} d</span>`:'<span class="mv-eq">● No change</span>'}</td><td>${esc(o.c||"")}</td></tr>`;}).join("");
+}
+// ------------------------------------------------ responsibility matrix
+let mx={rows:[]};
+const STC={"Overdue":"var(--late)","Due":"var(--amber)","Up to date":"var(--early)","No open milestones":"var(--muted)"};
+async function loadMatrix(){mx=await api("/api/matrix");renderMatrix();}
+function renderMatrix(){
+  const act=mx.rows.filter(r=>r.active);
+  const od=act.filter(r=>r.compliance&&r.compliance.status==="Overdue").length;$("od-badge").hidden=!od;$("od-badge").textContent=od;
+  $("mx-today").textContent="Checked against today, "+fmt(day(new Date().toISOString().slice(0,10)));
+  if(!act.length)$("mx-cards").innerHTML='<p class="empty">No disciplines yet. Sign in, click "Add discipline" below, enter the responsible person, their email, update frequency and escalation contacts, then "Save matrix".</p>';
+  else $("mx-cards").innerHTML=act.map(r=>{const c=r.compliance||{};const sub=c.status==="Overdue"?`missed ${c.missed.length} due date(s), ${c.overdue_days} d overdue`
+      :c.status==="Due"?`update by ${fmt(day(c.grace_until))}`:c.status==="Up to date"?`next due ${fmt(day(c.next_due))}`:"nothing to update";
+    return `<div class="kpi" style="--k:${STC[c.status]||"var(--muted)"}"><span class="l">${esc(r.discipline)}</span><span class="v" style="font-size:17px">${esc(c.status||"–")}</span>
+      <span class="s">${esc(r.person)} · ${esc(r.cadence)}</span><span class="s">${c.reporting?`${c.updated??c.reporting}/${c.reporting} current · `:""}${sub}</span></div>`;}).join("");
+  const un=$("mx-unassigned");un.hidden=!mx.unassigned.length;un.innerHTML=`<b>No responsible person:</b> milestones in ${mx.unassigned.map(esc).join(", ")} are not covered by the matrix. Add a row for each so their dates get updated and escalated.`;
+  $("mx-rows").innerHTML=mx.rows.map((r,i)=>r.active===0&&r.id?"":`<tr>
+    <td><input value="${esc(r.discipline)}" data-i="${i}" data-k="discipline" aria-label="Discipline" style="min-width:120px"></td>
+    <td><input value="${esc(r.person)}" data-i="${i}" data-k="person" aria-label="Responsible person" style="min-width:130px"></td>
+    <td><input value="${esc(r.email)}" data-i="${i}" data-k="email" aria-label="Email" style="min-width:190px"></td>
+    <td><select data-i="${i}" data-k="frequency" aria-label="Frequency" style="min-width:110px"><option ${r.frequency==="Weekly"?"selected":""}>Weekly</option><option ${r.frequency==="Monthly"?"selected":""}>Monthly</option></select></td>
+    <td><input type="number" min="1" max="31" value="${r.due_day}" data-i="${i}" data-k="due_day" style="width:70px" aria-label="Due day"><br><span class="note">${r.frequency==="Weekly"?["","Mon","Tue","Wed","Thu","Fri","Sat","Sun"][r.due_day]||"":"day "+r.due_day}</span></td>
+    <td><input type="number" min="0" max="30" value="${r.grace_days}" data-i="${i}" data-k="grace_days" style="width:70px" aria-label="Grace days"></td>
+    <td><input value="${esc(r.l1_email||"")}" data-i="${i}" data-k="l1_email" aria-label="Level 1 escalation email" style="min-width:180px"></td>
+    <td><input value="${esc(r.l2_email||"")}" data-i="${i}" data-k="l2_email" aria-label="Level 2 escalation email" style="min-width:180px"></td>
+    <td class="nw">${r.portal?`<a href="${esc(r.portal)}" target="_blank" rel="noopener">Update page</a> · <a href="${esc(r.portal)}/input.xlsx">Input file</a><br><button type="button" class="ghost" data-copy="${esc(r.portal)}">Copy link</button>`:r.id?'<span class="note">Sign in to see links</span>':'<span class="note">Save to create</span>'}</td>
+    <td><button type="button" class="ghost" data-del="${i}">Remove</button></td></tr>`).join("");
+}
+$("mx-rows").addEventListener("input",e=>{const i=e.target.dataset.i,k=e.target.dataset.k;if(i==null)return;mx.rows[i][k]=(k==="due_day"||k==="grace_days")?+e.target.value:e.target.value;});
+$("mx-rows").addEventListener("click",async e=>{
+  if(e.target.dataset.del!=null){mx.rows.splice(+e.target.dataset.del,1);renderMatrix();}
+  if(e.target.dataset.copy){try{await navigator.clipboard.writeText(e.target.dataset.copy);e.target.textContent="Copied";}catch(x){e.target.textContent=e.target.dataset.copy;}}
+});
+$("mx-add").addEventListener("click",()=>{mx.rows.push({discipline:"",person:"",email:"",frequency:"Monthly",due_day:1,grace_days:5,l1_email:"",l2_email:"",active:1});renderMatrix();});
+$("mx-save").addEventListener("click",async()=>{
+  try{const body=mx.rows.filter(r=>r.active!==0||!r.id).map(r=>({id:r.id||null,discipline:r.discipline,person:r.person,email:r.email,frequency:r.frequency,due_day:+r.due_day,grace_days:+r.grace_days,l1_email:r.l1_email||"",l2_email:r.l2_email||"",active:true}));
+    const r=await api("/api/matrix",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    $("mx-toast").innerHTML=`<span class="ok-t">Saved. ${r.reminded||0} reminder(s) sent, ${r.created} escalation(s) raised, ${r.closed} closed.</span>`;await loadMatrix();await load();}
+  catch(e){$("mx-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}
+});
+// ------------------------------------------------ outbox
+async function loadOutbox(){
+  const rows=await api("/api/outbox");const mode=config.email_mode;
+  $("mail-banner").innerHTML=mode==="dry-run"?`<div class="banner"><b>Dry-run mode:</b> emails are recorded here but not sent. To send real email, add <span style="font-family:var(--mono)">RESEND_API_KEY</span> and <span style="font-family:var(--mono)">EMAIL_FROM</span> (or SMTP settings) to the Railway service variables.</div>`
+    :`<div class="banner good"><b>Live email:</b> sending through ${mode==="resend"?"Resend":"SMTP"}.</div>`;
+  $("mail-rows").innerHTML=rows.length?rows.map(r=>`<tr><td class="nw">${esc(r.created_at)}</td><td>${esc(r.to_addr)}</td><td><details><summary>${esc(r.subject)}</summary><pre>${esc(r.body)}</pre></details></td>
+    <td class="nw"><span class="${r.status.startsWith("sent")?"ok-t":r.status==="failed"?"bad":"warn"}">${esc(r.status)}</span>${r.error?`<br><span class="note">${esc(r.error)}</span>`:""}</td></tr>`).join(""):`<tr><td colspan="4" class="empty">No emails yet.</td></tr>`;
+}
+// ------------------------------------------------ shell
+function renderAll(){renderFilters();const rows=analyze();renderKPIs(rows);renderChart(rows);renderInsights(rows);renderEscalations();if(mr.proj&&!mr.period)mrInit();else if(mr.proj){const keep={bc:mr.bc,appr:mr.appr,period:mr.period};mrInit();Object.assign(mr,keep);}renderMonthly();renderLog();}
+["f-proj","f-period","f-cat","f-status"].forEach((id,i)=>$(id).addEventListener("change",e=>{st[["proj","period","cat","status"][i]]=e.target.value;renderAll();}));
+$("key").addEventListener("change",e=>{const id=e.target.dataset.id;if(!id)return;e.target.checked?st.hidden.delete(id):st.hidden.add(id);renderChart(analyze());});
+$("view-icicle").addEventListener("click",()=>{st.view="icicle";renderChart(analyze());});
+$("view-mta").addEventListener("click",()=>{st.view="mta";renderChart(analyze());});
+function route(){const v=(location.hash||"#dashboard").slice(1);const views=["dashboard","projects","escalations","matrix","rules","data","outbox"];const cur=v==="setup"?"projects":views.includes(v)?v:"dashboard";
+  views.forEach(x=>$("v-"+x).hidden=x!==cur);document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.v===cur));
+  if(cur==="rules")loadRules().catch(()=>{});if(cur==="matrix")loadMatrix().catch(()=>{});if(cur==="projects")loadMatrix().catch(()=>{}).then(loadSetup);if(cur==="data"){mr.scrolled=null;renderMonthly();}if(cur==="escalations")loadBaselineRequests().catch(()=>{});if(cur==="outbox")loadOutbox().catch(()=>{});}
+window.addEventListener("hashchange",route);
+$("btn-login").addEventListener("click",()=>{$("login-err").hidden=true;$("pw").value="";$("login-dlg").showModal();});
+$("login-cancel").addEventListener("click",()=>$("login-dlg").close());
+$("login-form").addEventListener("submit",async e=>{e.preventDefault();const p=$("pw").value;
+  const r=await fetch("/api/login",{method:"POST",headers:{"X-Admin-Password":p}});
+  if(r.ok){pw=p;try{sessionStorage.setItem("mta-pw",p);}catch(x){}$("login-dlg").close();updateWho();if(location.hash==="#matrix")loadMatrix();}else $("login-err").hidden=false;});
+load().then(()=>{route();api("/api/matrix").then(m=>{mx=m;const od=m.rows.filter(r=>r.active&&r.compliance&&r.compliance.status==="Overdue").length;$("od-badge").hidden=!od;$("od-badge").textContent=od;}).catch(()=>{});}).catch(e=>{document.querySelector(".wrap").insertAdjacentHTML("beforeend",`<div class="banner">Could not load data: ${esc(e.message)}</div>`);});
+})();
+</script>
+</body></html>
