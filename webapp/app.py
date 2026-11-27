@@ -24,13 +24,14 @@ import urllib.request
 from email.message import EmailMessage
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tools"))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import msp_mirror  # noqa: E402
+import responsibility as rm  # noqa: E402
 import sample_data  # noqa: E402
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(HERE, "data"))
@@ -79,7 +80,7 @@ def d(s):
 
 def seed(con, reset=False):
     if reset:
-        for t in ("outbox", "escalations", "observations", "milestones", "projects"):
+        for t in ("reminders", "outbox", "escalations", "observations", "milestones", "projects"):
             con.execute(f"DELETE FROM {t}")
     if con.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
         projects, ms, obs = sample_data.build()
@@ -100,6 +101,7 @@ def seed(con, reset=False):
 with LOCK:
     _c = db()
     _c.executescript(SCHEMA)
+    rm.setup(_c)
     seed(_c)
     _c.close()
 
@@ -196,6 +198,7 @@ def escalation_email(e, st, url):
             f"Project:            {m['project_id']} {m['project_name']}\n"
             f"Milestone:          {m['id']} {m['name']}\n"
             f"Owner:              {m['owner'] or '-'}\n"
+            f"Discipline:         {m['category'] or '-'}" + (f"  (responsible: {e['disc']['person']})" if e.get('disc') else "") + "\n"
             f"Original baseline:  {fmt(m['baseline'])}\n"
             f"Current forecast:   {fmt(st['cur'])}  (reported {fmt(st['rep'])})\n"
             f"Delay vs baseline:  {st['delay']} days  (threshold {e['threshold']} days)\n\n"
@@ -212,7 +215,7 @@ def evaluate(con, url=None):
     state = milestone_state(con)
     created = closed = 0
     for mid, st in state.items():
-        open_esc = con.execute("SELECT * FROM escalations WHERE milestone_id=? AND status='Pending approval'", (mid,)).fetchall()
+        open_esc = con.execute("SELECT * FROM escalations WHERE milestone_id=? AND status='Pending approval' AND COALESCE(kind,'delay')='delay'", (mid,)).fetchall()
         if st["status"] == "Completed" or st["n"] == 0:
             for e in open_esc:
                 con.execute("UPDATE escalations SET status='Closed', decision='Auto-closed: milestone completed', decided_at=? WHERE id=?", (now(), e["id"]))
@@ -239,15 +242,23 @@ def evaluate(con, url=None):
             con.execute("UPDATE escalations SET status='Superseded', decision=?, decided_at=? WHERE id=?",
                         (f"Escalated to level {hit['level']}", now(), e["id"]))
         token = secrets.token_urlsafe(18)
+        recips = [x.strip() for x in hit["recipients"].split(",") if x.strip()]
+        disc = None
+        if hit.get("route_discipline", 1):
+            extra, disc = rm.contacts_for(con, st["m"]["category"], hit["level"])
+            recips += extra
+        recips = ", ".join(dict.fromkeys(recips))
         cur = con.execute("""INSERT INTO escalations(milestone_id,rule_id,level,rule_name,recipients,delay_days,baseline,forecast,rep_date,
-                             status,token,created_at,current_delay) VALUES(?,?,?,?,?,?,?,?,?,'Pending approval',?,?,?)""",
-                          (mid, hit["id"], hit["level"], hit["name"], hit["recipients"], delay, st["m"]["baseline"], st["cur"], st["rep"],
-                           token, now(), delay))
-        subj, body = escalation_email(dict(level=hit["level"], rule_name=hit["name"], token=token, threshold=hit["min_delay"]), st, url)
-        deliver(con, hit["recipients"], subj, body, cur.lastrowid)
+                             status,token,created_at,current_delay,kind,discipline) VALUES(?,?,?,?,?,?,?,?,?,'Pending approval',?,?,?,'delay',?)""",
+                          (mid, hit["id"], hit["level"], hit["name"], recips, delay, st["m"]["baseline"], st["cur"], st["rep"],
+                           token, now(), delay, disc["discipline"] if disc else st["m"]["category"]))
+        subj, body = escalation_email(dict(level=hit["level"], rule_name=hit["name"], token=token, threshold=hit["min_delay"],
+                                           disc=disc), st, url)
+        deliver(con, recips, subj, body, cur.lastrowid)
         created += 1
+    upd = rm.evaluate_updates(con, deliver, now, url, fmt)
     con.commit()
-    return dict(created=created, closed=closed)
+    return dict(created=created + upd["created"], closed=closed + upd["closed"], reminded=upd["reminded"])
 
 
 def scheduler():
@@ -304,7 +315,7 @@ def api_escalations():
     with LOCK:
         c = db()
         rows = [dict(r) for r in c.execute("""SELECT e.*, m.name AS milestone_name, m.project_id, m.owner
-                                               FROM escalations e JOIN milestones m ON m.id=e.milestone_id ORDER BY e.id DESC""")]
+                                               FROM escalations e LEFT JOIN milestones m ON m.id=e.milestone_id ORDER BY e.id DESC""")]
         c.close()
     for r in rows:
         r.pop("token", None)
@@ -337,6 +348,7 @@ class Rule(BaseModel):
     min_delay: int
     recipients: str
     active: bool = True
+    route_discipline: bool = True
 
 
 def valid_emails(s):
@@ -357,11 +369,11 @@ def put_rules(rules: list[Rule], request: Request, _=Depends(require_admin)):
         c.execute(f"UPDATE rules SET active=0 WHERE id NOT IN ({','.join('?' * len(keep)) or 'NULL'})", keep)
         for r in rules:
             if r.id:
-                c.execute("UPDATE rules SET level=?,name=?,min_delay=?,recipients=?,active=? WHERE id=?",
-                          (r.level, r.name.strip(), r.min_delay, r.recipients.strip(), int(r.active), r.id))
+                c.execute("UPDATE rules SET level=?,name=?,min_delay=?,recipients=?,active=?,route_discipline=? WHERE id=?",
+                          (r.level, r.name.strip(), r.min_delay, r.recipients.strip(), int(r.active), int(r.route_discipline), r.id))
             else:
-                c.execute("INSERT INTO rules(level,name,min_delay,recipients,active) VALUES(?,?,?,?,?)",
-                          (r.level, r.name.strip(), r.min_delay, r.recipients.strip(), int(r.active)))
+                c.execute("INSERT INTO rules(level,name,min_delay,recipients,active,route_discipline) VALUES(?,?,?,?,?,?)",
+                          (r.level, r.name.strip(), r.min_delay, r.recipients.strip(), int(r.active), int(r.route_discipline)))
         c.commit()
         res = evaluate(c, base_url(request))
         c.close()
@@ -460,17 +472,19 @@ class Decision(BaseModel):
 def decide(c, esc, dec: Decision, via):
     if esc["status"] != "Pending approval":
         raise HTTPException(409, f"This escalation is already {esc['status'].lower()}.")
-    if dec.decision not in ("Approved", "Rejected") or not dec.name.strip():
-        raise HTTPException(400, "Choose Approve or Reject and enter your name.")
+    if dec.decision not in ("Approved", "Rejected", "Acknowledged") or not dec.name.strip():
+        raise HTTPException(400, "Choose a decision and enter your name.")
     if dec.decision == "Rejected" and not dec.comment.strip():
         raise HTTPException(400, "Say what recovery action you need when rejecting.")
     c.execute("UPDATE escalations SET status=?, decision=?, decided_by=?, comment=?, decided_at=? WHERE id=?",
-              (dec.decision, ("Revised date accepted" if dec.decision == "Approved" else "Recovery plan required") + f" ({via})",
+              (dec.decision, {"Approved": "Revised date accepted", "Rejected": "Recovery plan required",
+                              "Acknowledged": "Missed update acknowledged"}[dec.decision] + f" ({via})",
                dec.name.strip(), dec.comment.strip(), now(), esc["id"]))
     m = c.execute("SELECT * FROM milestones WHERE id=?", (esc["milestone_id"],)).fetchone()
-    deliver(c, esc["recipients"], f"[MTA] {dec.decision}: {m['id']} {m['name']} (L{esc['level']} escalation)",
-            f"{dec.name.strip()} {dec.decision.lower()} the level {esc['level']} escalation for {m['id']} {m['name']}.\n"
-            f"Delay at escalation: {esc['delay_days']} days. Forecast: {fmt(esc['forecast'])}.\n"
+    what = f"{m['id']} {m['name']}" if m else f"{esc['discipline']} missed update"
+    deliver(c, esc["recipients"], f"[MTA] {dec.decision}: {what} (L{esc['level']} escalation)",
+            f"{dec.name.strip()} {dec.decision.lower()} the level {esc['level']} escalation for {what}.\n"
+            f"Delay at escalation: {esc['delay_days']} days." + (f" Forecast: {fmt(esc['forecast'])}." if esc['forecast'] else "") + "\n"
             f"Comment: {dec.comment.strip() or '-'}\n", esc["id"])
     c.commit()
 
@@ -519,7 +533,7 @@ body{{font:15px/1.55 'Segoe UI',Arial,sans-serif;background:#F2F4F8;color:#16233
 h1{{font-size:21px;margin:0 0 4px;color:#1F3864}} .m{{color:#5D6779;font-size:13px}} table{{width:100%;border-collapse:collapse;margin:14px 0}}
 td{{padding:6px 4px;border-bottom:1px solid #E6ECF5}} td:first-child{{color:#5D6779;width:42%}}
 label{{display:block;font-weight:600;font-size:13px;margin:12px 0 4px}} input,textarea{{width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid #C9D1DE;border-radius:6px}}
-.b{{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}} button{{font:600 14px inherit;padding:10px 16px;border-radius:7px;border:0;cursor:pointer;color:#fff}}
+.b{{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}} button{{font:600 14px 'Segoe UI',Arial,sans-serif;padding:10px 16px;border-radius:7px;border:0;cursor:pointer;color:#fff}}
 .ok{{background:#1E8449}} .no{{background:#C0392B}} .pill{{display:inline-block;padding:3px 10px;border-radius:99px;font-weight:600;font-size:13px;background:#E6ECF5}}
 .late{{color:#C0392B;font-weight:700}}</style></head><body><div class="c">{content}</div></body></html>"""
 
@@ -529,11 +543,29 @@ def esc_view(c, token):
     if not esc:
         raise HTTPException(404, "This approval link is not valid.")
     m = c.execute("SELECT m.*, p.name AS pname FROM milestones m JOIN projects p ON p.id=m.project_id WHERE m.id=?", (esc["milestone_id"],)).fetchone()
+    if m is None:
+        dr = c.execute("SELECT * FROM disciplines WHERE discipline=? COLLATE NOCASE", (esc["discipline"] or "",)).fetchone()
+        m = dict(kind="missed", discipline=esc["discipline"], person=dr["person"] if dr else "-", email=dr["email"] if dr else "-",
+                 cadence=rm.cadence_text(dr) if dr else "-", token=dr["token"] if dr else None)
     return esc, m
 
 
 def approval_html(esc, m, msg=""):
     e = html.escape
+    if isinstance(m, dict) and m.get("kind") == "missed":
+        rows = [("Discipline", m["discipline"]), ("Responsible", f"{m['person']} <{m['email']}>"), ("Update cadence", m["cadence"]),
+                ("Escalation", f"Level {esc['level']}: {esc['rule_name']}"), ("First missed due date", fmt(esc["period"])),
+                ("Overdue when escalated", f"<span class='late'>{esc['delay_days']} days</span>"), ("Raised", esc["created_at"])]
+        t = "".join(f"<tr><td>{a}</td><td>{b if a.startswith('Overdue') else e(str(b))}</td></tr>" for a, b in rows)
+        if esc["status"] == "Pending approval":
+            form = """<form method="post"><label for="n">Your name</label><input id="n" name="name" required>
+            <label for="cm">Comment (optional)</label><textarea id="cm" name="comment" rows="3"></textarea>
+            <div class="b"><button class="ok" name="decision" value="Acknowledged">Acknowledge - I will chase the update</button></div></form>"""
+        else:
+            form = f"<p><span class='pill'>{e(esc['status'])}</span> {e(esc['decision'] or '')} {('by ' + e(esc['decided_by'])) if esc['decided_by'] else ''}</p>"
+        portal = f"<p><a href='/update/{m['token']}'>Open the {e(m['discipline'])} update page</a></p>" if m.get("token") else ""
+        return PAGE.format(content=f"<h1>Missed milestone update</h1><div class='m'>Milestone Trend Analysis responsibility matrix</div>"
+                                   f"{('<p><b>' + e(msg) + '</b></p>') if msg else ''}<table>{t}</table>{form}{portal}")
     rows = [("Project", f"{m['project_id']} {m['pname']}"), ("Milestone", f"{m['id']} {m['name']}"), ("Owner", m["owner"] or "-"),
             ("Escalation", f"Level {esc['level']}: {esc['rule_name']}"), ("Original baseline", fmt(esc["baseline"])),
             ("Forecast when escalated", f"{fmt(esc['forecast'])} (report {fmt(esc['rep_date'])})"),
@@ -576,6 +608,236 @@ def approve_post(token: str, decision: str = Form(...), name: str = Form(""), co
     return approval_html(esc, m, msg)
 
 
+# ----------------------------------------------------------------------------- responsibility matrix
+def is_admin(pw):
+    return not ADMIN_PASSWORD or secrets.compare_digest(pw or "", ADMIN_PASSWORD)
+
+
+@app.get("/api/matrix")
+def api_matrix(request: Request, x_admin_password: str = Header(default="")):
+    admin = is_admin(x_admin_password)
+    url = base_url(request)
+    with LOCK:
+        c = db()
+        rows = rm.matrix_rows(c, active_only=False)
+        comp = {r["id"]: rm.compliance(c, r) for r in rows if r["active"]}
+        cats = [x[0] for x in c.execute("SELECT DISTINCT category FROM milestones WHERE category IS NOT NULL AND category<>''")]
+        c.close()
+    known = {r["discipline"].lower() for r in rows if r["active"]}
+    for r in rows:
+        r["compliance"] = comp.get(r["id"])
+        r["cadence"] = rm.cadence_text(r)
+        if admin:
+            r["portal"] = f"{url}/update/{r['token']}"
+        r.pop("token")
+    return dict(rows=rows, unassigned=sorted(x for x in cats if x.lower() not in known), admin=admin)
+
+
+class Discipline(BaseModel):
+    id: int | None = None
+    discipline: str
+    person: str
+    email: str
+    frequency: str
+    due_day: int
+    grace_days: int = 3
+    l1_email: str = ""
+    l2_email: str = ""
+    active: bool = True
+
+
+@app.put("/api/matrix")
+def put_matrix(rows: list[Discipline], request: Request, _=Depends(require_admin)):
+    seen = set()
+    for r in rows:
+        nm = r.discipline.strip()
+        if not nm or not r.person.strip():
+            raise HTTPException(400, "Every row needs a discipline and a responsible person.")
+        if nm.lower() in seen:
+            raise HTTPException(400, f"Discipline '{nm}' is listed twice.")
+        seen.add(nm.lower())
+        if not valid_emails(r.email) or (r.l1_email and not valid_emails(r.l1_email)) or (r.l2_email and not valid_emails(r.l2_email)):
+            raise HTTPException(400, f"{nm}: check the email addresses (separate several with commas).")
+        if r.frequency not in ("Weekly", "Monthly"):
+            raise HTTPException(400, f"{nm}: frequency must be Weekly or Monthly.")
+        if (r.frequency == "Weekly" and not 1 <= r.due_day <= 7) or (r.frequency == "Monthly" and not 1 <= r.due_day <= 31):
+            raise HTTPException(400, f"{nm}: due day must be a weekday (1 = Monday ... 7 = Sunday) or a day of the month (1-31).")
+        if not 0 <= r.grace_days <= 30:
+            raise HTTPException(400, f"{nm}: grace days must be between 0 and 30.")
+    with LOCK:
+        c = db()
+        keep = [r.id for r in rows if r.id]
+        c.execute(f"UPDATE disciplines SET active=0 WHERE id NOT IN ({','.join('?' * len(keep)) or 'NULL'})", keep)
+        for r in rows:
+            vals = (r.discipline.strip(), r.person.strip(), r.email.strip(), r.frequency, r.due_day, r.grace_days,
+                    r.l1_email.strip(), r.l2_email.strip(), int(r.active))
+            if r.id:
+                c.execute("""UPDATE disciplines SET discipline=?,person=?,email=?,frequency=?,due_day=?,grace_days=?,l1_email=?,l2_email=?,active=?
+                             WHERE id=?""", vals + (r.id,))
+            else:
+                c.execute("""INSERT INTO disciplines(discipline,person,email,frequency,due_day,grace_days,l1_email,l2_email,active,token)
+                             VALUES(?,?,?,?,?,?,?,?,?,?)""", vals + (secrets.token_urlsafe(16),))
+        c.commit()
+        res = evaluate(c, base_url(request))
+        c.close()
+    return dict(ok=True, **res)
+
+
+def portal_row(c, token):
+    r = c.execute("SELECT * FROM disciplines WHERE token=? AND active=1", (token,)).fetchone()
+    if not r:
+        raise HTTPException(404, "This update link is not valid. Ask the PMO for your discipline's current link.")
+    return dict(r)
+
+
+def save_updates(c, r, items, source):
+    allowed = {m["id"] for m in rm.discipline_milestones(c, r["discipline"])}
+    added, errors = 0, []
+    for it in items:
+        tag = f"Row {it['row']} " if it.get("row") else ""
+        mid = it["milestone_id"]
+        if it.get("error"):
+            errors.append(f"{tag}{mid}: {it['error']}")
+            continue
+        if not it.get("forecast"):
+            continue  # nothing entered for this milestone
+        if mid not in allowed:
+            errors.append(f"{tag}{mid}: not an open {r['discipline']} milestone")
+            continue
+        rep_ = it.get("rep_date")
+        if not rep_:
+            errors.append(f"{tag}{mid}: reporting date missing")
+            continue
+        if it.get("actual") and it["actual"] > rep_:
+            errors.append(f"{tag}{mid}: actual date is after the reporting date")
+            continue
+        try:
+            c.execute("INSERT INTO observations(milestone_id,rep_date,forecast,actual,comment,source,created_at) VALUES(?,?,?,?,?,?,?)",
+                      (mid, rep_.isoformat(), it["forecast"].isoformat(), it["actual"].isoformat() if it.get("actual") else None,
+                       it.get("comment") or None, f"{source} ({r['person']})", now()))
+            added += 1
+        except sqlite3.IntegrityError:
+            errors.append(f"{tag}{mid}: already recorded for {rep_:%d-%b-%Y}")
+    c.commit()
+    return added, errors
+
+
+PORTAL_CSS = """<style>body{font:15px/1.5 'Segoe UI',Arial,sans-serif;background:#F2F4F8;color:#16233B;margin:0;padding:24px 16px}
+.c{max-width:1100px;margin:0 auto;display:grid;gap:16px}.card{background:#fff;border:1px solid #D8DEE8;border-radius:10px;padding:18px;overflow-x:auto}
+h1{font-size:22px;margin:0;color:#1F3864}h2{font-size:16px;margin:0 0 8px}.m{color:#5D6779;font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}th,td{padding:7px 8px;border-bottom:1px solid #E6ECF5;text-align:left;white-space:nowrap}
+th{background:#E6ECF5;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:#5D6779}
+input[type=date],input[type=text]{font:inherit;padding:5px 7px;border:1px solid #E2C35A;background:#FFF7D6;border-radius:6px}
+button,.btn{font:600 14px 'Segoe UI',Arial,sans-serif;padding:9px 16px;border-radius:7px;border:0;cursor:pointer;color:#fff;background:#1F3864;text-decoration:none;display:inline-block}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;font-weight:600;font-size:12.5px;color:#fff}
+.Overdue{background:#C0392B}.Due{background:#C55A11}.Up{background:#1E8449}.No{background:#8A939F}
+.msg{padding:10px 14px;border-radius:8px;background:#E2F0D9}.err{background:#F8D7DA}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}</style>"""
+
+
+def portal_html(c, r, msg="", errors=()):
+    e = html.escape
+    comp = rm.compliance(c, r)
+    ms = rm.discipline_milestones(c, r["discipline"])
+    stale = set(comp.get("stale", []))
+    status = comp["status"]
+    extra = (f" since {fmt(comp['missed'][0])} ({comp['overdue_days']} days)" if status == "Overdue"
+             else f" - please update by {fmt(comp['grace_until'])}" if status == "Due" else "")
+    rows = "".join(
+        f"<tr><td>{e(m['project_id'])}</td><td><b>{e(m['id'])}</b> {e(m['name'])}</td><td>{fmt(m['baseline'])}</td>"
+        f"<td>{fmt(m['last_rep'])}{' <b style=color:#C0392B>needs update</b>' if m['id'] in stale else ''}</td><td>{fmt(m['last_fc'])}</td>"
+        f"<td><input type='date' name='fc_{e(m['id'])}' value='{m['last_fc'] or ''}' aria-label='New forecast {e(m['id'])}'></td>"
+        f"<td><input type='checkbox' name='done_{e(m['id'])}' aria-label='{e(m['id'])} achieved'></td>"
+        f"<td><input type='text' name='cm_{e(m['id'])}' placeholder='Reason for any change' size='28'></td></tr>" for m in ms)
+    msg_html = (f"<div class='msg'>{e(msg)}</div>" if msg else "") + \
+               (f"<div class='msg err'><b>Not saved:</b><br>{'<br>'.join(e(x) for x in errors)}</div>" if errors else "")
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{e(r['discipline'])} milestone update</title>{PORTAL_CSS}</head><body><div class="c">
+<div class="card"><h1>{e(r['discipline'])} - milestone date update</h1>
+<p class="m">Responsible: <b>{e(r['person'])}</b> &lt;{e(r['email'])}&gt; · Cadence: {e(rm.cadence_text(r))} · Grace: {r['grace_days']} day(s) ·
+Next due: {fmt(comp['next_due'])}</p>
+<p><span class="pill {status.split()[0]}">{e(status)}</span> {e(extra)} · {comp.get('updated', 0)} of {comp['reporting']} reporting milestones current</p></div>
+{msg_html}
+<form class="card" method="post"><h2>Update dates online</h2>
+<p class="m">Each submitted row adds a new forecast observation; earlier forecasts are kept. Leave a forecast unchanged if the date has not moved, but do submit it, so the update counts.</p>
+<div class="row" style="margin:8px 0 12px"><label>Reporting (status) date <input type="date" name="rep_date" value="{rm.today().isoformat()}" required></label></div>
+<table><thead><tr><th>Project</th><th>Milestone</th><th>Baseline</th><th>Last reported</th><th>Last forecast</th><th>New forecast</th><th>Achieved</th><th>Comment</th></tr></thead>
+<tbody>{rows or '<tr><td colspan=8>No open milestones for this discipline.</td></tr>'}</tbody></table>
+<p style="margin-top:14px"><button type="submit">Submit update</button></p></form>
+<div class="card"><h2>Or use the input file</h2><p class="m">Download the Excel input file, fill the yellow columns, and upload it here.</p>
+<div class="row"><a class="btn" href="/update/{e(r['token'])}/input.xlsx">Download input file (.xlsx)</a>
+<form method="post" action="/update/{e(r['token'])}/upload" enctype="multipart/form-data" class="row">
+<input type="file" name="file" accept=".xlsx,.csv" required aria-label="Completed input file"><button type="submit">Upload completed file</button></form></div></div>
+<p class="m"><a href="/">Open the dashboard</a></p></div></body></html>"""
+
+
+@app.get("/update/{token}", response_class=HTMLResponse)
+def portal(token: str):
+    with LOCK:
+        c = db()
+        r = portal_row(c, token)
+        out = portal_html(c, r)
+        c.close()
+    return out
+
+
+@app.post("/update/{token}", response_class=HTMLResponse)
+async def portal_post(token: str, request: Request):
+    form = await request.form()
+    with LOCK:
+        c = db()
+        r = portal_row(c, token)
+        items, errors = [], []
+        try:
+            rep_ = dt.date.fromisoformat(form.get("rep_date", ""))
+        except ValueError:
+            rep_ = None
+        for m in rm.discipline_milestones(c, r["discipline"]):
+            v = form.get(f"fc_{m['id']}")
+            if not v:
+                continue
+            fc = dt.date.fromisoformat(v)
+            if v == m["last_fc"] and not form.get(f"cm_{m['id']}") and not form.get(f"done_{m['id']}") and m["last_rep"] == (rep_.isoformat() if rep_ else None):
+                continue
+            items.append(dict(milestone_id=m["id"], rep_date=rep_, forecast=fc, actual=fc if form.get(f"done_{m['id']}") else None,
+                              comment=form.get(f"cm_{m['id']}") or None))
+        added, errors = save_updates(c, r, items, "update page")
+        res = evaluate(c, base_url(request))
+        out = portal_html(c, r, f"Saved {added} forecast(s) for {fmt(rep_.isoformat()) if rep_ else '-'}. "
+                                f"Escalation check: {res['created']} raised, {res['closed']} closed.", errors)
+        c.close()
+    return out
+
+
+@app.get("/update/{token}/input.xlsx")
+def portal_file(token: str):
+    with LOCK:
+        c = db()
+        r = portal_row(c, token)
+        data = rm.input_workbook(c, r)
+        c.close()
+    fn = f"MTA_input_{r['discipline'].replace(' ', '_')}_{rm.today():%Y-%m-%d}.xlsx"
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+
+
+@app.post("/update/{token}/upload", response_class=HTMLResponse)
+async def portal_upload(token: str, request: Request, file: UploadFile = File(...)):
+    data = await file.read()
+    with LOCK:
+        c = db()
+        r = portal_row(c, token)
+        try:
+            items = rm.parse_input_file(file.filename or "upload.xlsx", data)
+            added, errors = save_updates(c, r, items, "input file")
+            res = evaluate(c, base_url(request))
+            msg = f"Imported {file.filename}: {added} forecast(s) saved. Escalation check: {res['created']} raised, {res['closed']} closed."
+        except Exception as ex:
+            msg, errors = "", [str(ex)]
+        out = portal_html(c, r, msg, errors)
+        c.close()
+    return out
+
+
 # ----------------------------------------------------------------------------- front end
 @app.get("/health")
 def health():
@@ -589,6 +851,6 @@ def index():
 
 @app.exception_handler(HTTPException)
 async def http_err(request: Request, exc: HTTPException):
-    if request.url.path.startswith("/approve/") and request.method == "GET":
+    if request.url.path.startswith(("/approve/", "/update/")) and request.method == "GET":
         return HTMLResponse(PAGE.format(content=f"<h1>Link not valid</h1><p>{html.escape(str(exc.detail))}</p>"), status_code=exc.status_code)
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)

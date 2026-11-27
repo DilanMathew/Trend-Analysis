@@ -97,6 +97,7 @@ dialog::backdrop{background:rgba(10,15,30,.45)}
 <nav aria-label="Sections">
   <a href="#dashboard" data-v="dashboard">Dashboard</a>
   <a href="#escalations" data-v="escalations">Escalations &amp; approvals<span class="badge" id="pend-badge" hidden></span></a>
+  <a href="#matrix" data-v="matrix">Responsibility matrix<span class="badge" id="od-badge" hidden></span></a>
   <a href="#rules" data-v="rules">Escalation rules</a>
   <a href="#data" data-v="data">Data entry</a>
   <a href="#outbox" data-v="outbox">Email outbox</a>
@@ -137,8 +138,24 @@ dialog::backdrop{background:rgba(10,15,30,.45)}
     <p class="note" style="margin:4px 0 12px">When an open milestone's delay against its original baseline reaches a rule's threshold, an escalation is raised and emailed to that rule's recipients with an approval link. Approvers accept the revised date or reject it and ask for a recovery plan. Escalations close on their own when the milestone completes or its delay falls back under the threshold; a higher level supersedes a lower one.</p>
     <div class="stats" id="esc-stats"></div>
   </div>
-  <div class="card"><div class="row" style="margin-bottom:10px"><label class="f" style="min-width:200px">Show<select id="esc-filter"><option value="Pending approval">Pending approval</option><option value="all">All escalations</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option><option value="Closed">Closed / superseded</option></select></label></div>
+  <div class="card"><div class="row" style="margin-bottom:10px"><label class="f" style="min-width:200px">Show<select id="esc-filter"><option value="Pending approval">Pending approval</option><option value="all">All escalations</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option><option value="Acknowledged">Acknowledged</option><option value="Closed">Closed / superseded</option></select></label></div>
     <div class="scroll"><table><thead><tr><th>#</th><th>Milestone</th><th>Level</th><th>Delay at escalation</th><th>Delay now</th><th>Sent to</th><th>Status</th><th>Raised</th><th>Decision</th></tr></thead><tbody id="esc-rows"></tbody></table></div>
+  </div>
+</section>
+
+<!-- ======================= MATRIX -->
+<section id="v-matrix" class="wrap" hidden>
+  <div class="card">
+    <div class="chead"><h2>Update compliance</h2><span class="m" id="mx-today"></span></div>
+    <p class="note" style="margin:4px 0 12px">Each discipline must refresh the forecast of every open milestone once per cycle. The responsible person is emailed their update link when a cycle falls due. Missing a due date plus the grace period escalates to the discipline's Level 1 contact; missing two in a row escalates to Level 2. Escalations close automatically once the discipline updates.</p>
+    <div class="stats" id="mx-cards"></div>
+    <p class="banner" id="mx-unassigned" hidden style="margin-top:12px"></p>
+  </div>
+  <div class="card">
+    <h2>Responsibility matrix</h2>
+    <p class="note" style="margin:4px 0 12px">A discipline matches milestones by their category. Due day: 1 = Monday … 7 = Sunday for weekly updates, or the day of the month for monthly updates. Delay escalations also go to these contacts when a rule has "Notify discipline contacts" ticked: Level 1 to the responsible person and the L1 contact, Level 2 and above also to the L2 contact.</p>
+    <div class="scroll"><table><thead><tr><th>Discipline</th><th>Responsible person</th><th>Email</th><th>Frequency</th><th>Due day</th><th>Grace (days)</th><th>Level 1 escalation</th><th>Level 2 escalation</th><th>Update page / input file</th><th></th></tr></thead><tbody id="mx-rows"></tbody></table></div>
+    <div class="row" style="margin-top:12px"><button type="button" id="mx-add">Add discipline</button><button type="button" class="primary" id="mx-save">Save matrix</button><span class="toast" id="mx-toast" aria-live="polite"></span></div>
   </div>
 </section>
 
@@ -147,7 +164,7 @@ dialog::backdrop{background:rgba(10,15,30,.45)}
   <div class="card">
     <h2>Escalation rules</h2>
     <p class="note" style="margin:4px 0 12px">Delay = days between the current forecast (or actual date) and the original baseline. A milestone is escalated to the highest level it reaches, once per level. Separate several email addresses with commas.</p>
-    <div class="scroll"><table><thead><tr><th>Level</th><th>Name</th><th>Escalate when delay ≥ (days)</th><th>Email recipients</th><th>Active</th><th></th></tr></thead><tbody id="rule-rows"></tbody></table></div>
+    <div class="scroll"><table><thead><tr><th>Level</th><th>Name</th><th>Escalate when delay ≥ (days)</th><th>Email recipients</th><th>Notify discipline contacts</th><th>Active</th><th></th></tr></thead><tbody id="rule-rows"></tbody></table></div>
     <div class="row" style="margin-top:12px"><button type="button" id="btn-addrule">Add level</button><button type="button" class="primary" id="btn-saverules">Save rules</button><span class="toast" id="rule-toast" aria-live="polite"></span></div>
   </div>
 </section>
@@ -202,7 +219,7 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const CFG={tol:3,sig:10};
 const STATUSES=["Completed","Delayed","Ahead of Schedule","On Schedule","Not Yet Started"];
 const SCOL={"Completed":"var(--done)","Delayed":"var(--late)","Ahead of Schedule":"var(--early)","On Schedule":"var(--on)","Not Yet Started":"var(--nys)",
-  "Pending approval":"var(--amber)","Approved":"var(--early)","Rejected":"var(--late)","Closed":"var(--muted)","Superseded":"var(--muted)"};
+  "Pending approval":"var(--amber)","Approved":"var(--early)","Acknowledged":"var(--on)","Rejected":"var(--late)","Closed":"var(--muted)","Superseded":"var(--muted)"};
 const PAL=["#1F77B4","#E67E22","#2CA02C","#D62728","#9467BD","#8C564B","#D35FB7","#17BECF","#A8A21E","#5A63C8","#AD494A","#6B8E23","#E7969C","#7B4173","#3182BD"];
 const $=id=>document.getElementById(id);
 let projects=[],ms=[],msBy={},cats=[],obs=[],escs=[],config={};
@@ -335,11 +352,12 @@ function renderEscalations(){
     .map(([l,v])=>`<div class="kpi" style="--k:${SCOL[l.split(" /")[0]]||"var(--muted)"}"><span class="l">${l}</span><span class="v">${v}</span></div>`).join("");
   const fv=$("esc-filter").value;
   const list=escs.filter(e=>fv==="all"||e.status===fv||(fv==="Closed"&&e.status==="Superseded"));
-  $("esc-rows").innerHTML=list.length?list.map(e=>`<tr><td>${e.id}</td><td><b>${esc(e.milestone_id)}</b> ${esc(e.milestone_name)}<br><span class="note">${esc(e.project_id)} · owner ${esc(e.owner||"–")}</span></td>
+  $("esc-rows").innerHTML=list.length?list.map(e=>`<tr><td>${e.id}</td><td>${e.kind==="missed_update"?`<b>Missed update</b> · ${esc(e.discipline)}<br><span class="note">first missed due date ${fmt(day(e.period))}</span>`
+      :`<b>${esc(e.milestone_id)}</b> ${esc(e.milestone_name)}<br><span class="note">${esc(e.project_id)} · ${esc(e.discipline||"")} · owner ${esc(e.owner||"–")}</span>`}</td>
     <td><span class="lvl l${e.level}">L${e.level}</span><br><span class="note">${esc(e.rule_name)}</span></td>
-    <td class="nw bad">${e.delay_days} d</td><td class="nw">${e.current_delay??"–"} d</td><td>${esc(e.recipients)}</td>
+    <td class="nw bad">${e.delay_days} d${e.kind==="missed_update"?" overdue":""}</td><td class="nw">${e.current_delay??"–"} d</td><td>${esc(e.recipients)}</td>
     <td><span class="pill" style="color:${SCOL[e.status]}">${esc(e.status)}</span></td><td class="nw">${esc(e.created_at)}</td>
-    <td>${e.status==="Pending approval"?`<div class="row"><button type="button" class="ok" data-act="Approved" data-id="${e.id}">Approve</button><button type="button" class="no" data-act="Rejected" data-id="${e.id}">Reject</button></div><div class="decide" id="dec-${e.id}" hidden></div>`
+    <td>${e.status==="Pending approval"?`<div class="row">${e.kind==="missed_update"?`<button type="button" class="ok" data-act="Acknowledged" data-id="${e.id}">Acknowledge</button>`:`<button type="button" class="ok" data-act="Approved" data-id="${e.id}">Approve</button><button type="button" class="no" data-act="Rejected" data-id="${e.id}">Reject</button>`}</div><div class="decide" id="dec-${e.id}" hidden></div>`
       :`${esc(e.decision||"")}${e.decided_by?` by <b>${esc(e.decided_by)}</b>`:""}<br><span class="note">${esc(e.decided_at||"")}${e.comment?" · “"+esc(e.comment)+"”":""}</span>`}</td></tr>`).join("")
     :`<tr><td colspan="9" class="empty">No escalations in this view.</td></tr>`;
 }
@@ -348,7 +366,7 @@ $("esc-rows").addEventListener("click",e=>{
   const b=e.target.closest("button[data-act]");if(!b)return;const id=b.dataset.id,act=b.dataset.act,box=$("dec-"+id);
   if(b.dataset.confirm){return;}
   box.hidden=false;box.innerHTML=`<label class="f">Your name<input id="dn-${id}"></label><label class="f">Comment${act==="Rejected"?" (required: what recovery is needed)":""}<textarea id="dc-${id}" rows="2"></textarea></label>
-    <div class="row"><button type="button" class="${act==="Approved"?"ok":"no"}" data-confirm="1" id="dg-${id}">Confirm ${act==="Approved"?"approval":"rejection"}</button><span class="toast bad" id="de-${id}"></span></div>`;
+    <div class="row"><button type="button" class="${act==="Rejected"?"no":"ok"}" data-confirm="1" id="dg-${id}">Confirm ${({Approved:"approval",Rejected:"rejection",Acknowledged:"acknowledgement"})[act]}</button><span class="toast bad" id="de-${id}"></span></div>`;
   $("dg-"+id).addEventListener("click",async()=>{
     try{await api(`/api/escalations/${id}/decision`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision:act,name:$("dn-"+id).value,comment:$("dc-"+id).value})});await load();}
     catch(err){$("de-"+id).textContent=err.message;}
@@ -364,13 +382,14 @@ function renderRules(){
     <td><input value="${esc(r.name)}" data-i="${i}" data-k="name" aria-label="Rule name"></td>
     <td><input type="number" min="1" value="${r.min_delay}" data-i="${i}" data-k="min_delay" style="width:110px" aria-label="Delay threshold in days"></td>
     <td><input value="${esc(r.recipients)}" data-i="${i}" data-k="recipients" placeholder="name@company.com, other@company.com" aria-label="Recipients"></td>
+    <td><input type="checkbox" ${r.route_discipline!==0&&r.route_discipline!==false?"checked":""} data-i="${i}" data-k="route_discipline" style="width:18px;height:18px" aria-label="Notify discipline contacts"></td>
     <td><input type="checkbox" ${r.active?"checked":""} data-i="${i}" data-k="active" style="width:18px;height:18px" aria-label="Active"></td>
     <td><button type="button" class="ghost" data-del="${i}">Remove</button></td></tr>`).join("");
 }
-$("rule-rows").addEventListener("input",e=>{const i=e.target.dataset.i,k=e.target.dataset.k;if(i==null)return;rules[i][k]=k==="active"?e.target.checked:(k==="level"||k==="min_delay")?+e.target.value:e.target.value;});
+$("rule-rows").addEventListener("input",e=>{const i=e.target.dataset.i,k=e.target.dataset.k;if(i==null)return;rules[i][k]=(k==="active"||k==="route_discipline")?e.target.checked:(k==="level"||k==="min_delay")?+e.target.value:e.target.value;});
 $("rule-rows").addEventListener("click",e=>{const i=e.target.dataset.del;if(i!=null){rules.splice(+i,1);renderRules();}});
-$("btn-addrule").addEventListener("click",()=>{const mx=Math.max(0,...rules.map(r=>r.level)),md=Math.max(0,...rules.map(r=>r.min_delay));rules.push({level:mx+1,name:`Level ${mx+1} escalation`,min_delay:md+30,recipients:"",active:true});renderRules();});
-$("btn-saverules").addEventListener("click",async()=>{try{const r=await api("/api/rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(rules.map(r=>({...r,active:!!r.active})))});$("rule-toast").innerHTML=`<span class="ok-t">Saved. ${r.created} escalation(s) raised, ${r.closed} closed.</span>`;await loadRules();await load();}catch(e){$("rule-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
+$("btn-addrule").addEventListener("click",()=>{const mx=Math.max(0,...rules.map(r=>r.level)),md=Math.max(0,...rules.map(r=>r.min_delay));rules.push({level:mx+1,name:`Level ${mx+1} escalation`,min_delay:md+30,recipients:"",active:true,route_discipline:true});renderRules();});
+$("btn-saverules").addEventListener("click",async()=>{try{const r=await api("/api/rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(rules.map(r=>({...r,active:!!r.active,route_discipline:r.route_discipline!==0&&r.route_discipline!==false})))});$("rule-toast").innerHTML=`<span class="ok-t">Saved. ${r.created} escalation(s) raised, ${r.closed} closed.</span>`;await loadRules();await load();}catch(e){$("rule-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
 // ------------------------------------------------ data entry
 const ef={proj:null,date:null,vals:{},done:{},notes:{}};
 function nextDate(pid){const d=projDates(pid);if(!d.length)return day(new Date().toISOString().slice(0,10));if(d.length<2)return d[0]+14;const g=d.slice(1).map((x,i)=>x-d[i]).sort((a,b)=>a-b);return d[d.length-1]+g[Math.floor(g.length/2)];}
@@ -426,6 +445,43 @@ function renderLog(){
     return `<tr><td><b>${esc(o.m)}</b> ${esc(m.name)}</td><td class="nw">${fmt(o.r)}</td><td class="nw">${fmt(o.f)}</td><td class="nw">${o.a?fmt(o.a):""}</td>
     <td class="nw">${mv===null?"◆ First report":mv>0?`<span class="mv-up">▲ +${mv} d</span>`:mv<0?`<span class="mv-dn">▼ ${mv} d</span>`:'<span class="mv-eq">● No change</span>'}</td><td>${esc(o.c||"")}</td></tr>`;}).join("");
 }
+// ------------------------------------------------ responsibility matrix
+let mx={rows:[]};
+const STC={"Overdue":"var(--late)","Due":"var(--amber)","Up to date":"var(--early)","No open milestones":"var(--muted)"};
+async function loadMatrix(){mx=await api("/api/matrix");renderMatrix();}
+function renderMatrix(){
+  const act=mx.rows.filter(r=>r.active);
+  const od=act.filter(r=>r.compliance&&r.compliance.status==="Overdue").length;$("od-badge").hidden=!od;$("od-badge").textContent=od;
+  $("mx-today").textContent="Checked against today, "+fmt(day(new Date().toISOString().slice(0,10)));
+  $("mx-cards").innerHTML=act.map(r=>{const c=r.compliance||{};const sub=c.status==="Overdue"?`missed ${c.missed.length} due date(s), ${c.overdue_days} d overdue`
+      :c.status==="Due"?`update by ${fmt(day(c.grace_until))}`:c.status==="Up to date"?`next due ${fmt(day(c.next_due))}`:"nothing to update";
+    return `<div class="kpi" style="--k:${STC[c.status]||"var(--muted)"}"><span class="l">${esc(r.discipline)}</span><span class="v" style="font-size:17px">${esc(c.status||"–")}</span>
+      <span class="s">${esc(r.person)} · ${esc(r.cadence)}</span><span class="s">${c.reporting?`${c.updated??c.reporting}/${c.reporting} current · `:""}${sub}</span></div>`;}).join("");
+  const un=$("mx-unassigned");un.hidden=!mx.unassigned.length;un.innerHTML=`<b>No responsible person:</b> milestones in ${mx.unassigned.map(esc).join(", ")} are not covered by the matrix. Add a row for each so their dates get updated and escalated.`;
+  $("mx-rows").innerHTML=mx.rows.map((r,i)=>r.active===0&&r.id?"":`<tr>
+    <td><input value="${esc(r.discipline)}" data-i="${i}" data-k="discipline" aria-label="Discipline" style="min-width:120px"></td>
+    <td><input value="${esc(r.person)}" data-i="${i}" data-k="person" aria-label="Responsible person" style="min-width:130px"></td>
+    <td><input value="${esc(r.email)}" data-i="${i}" data-k="email" aria-label="Email" style="min-width:190px"></td>
+    <td><select data-i="${i}" data-k="frequency" aria-label="Frequency" style="min-width:110px"><option ${r.frequency==="Weekly"?"selected":""}>Weekly</option><option ${r.frequency==="Monthly"?"selected":""}>Monthly</option></select></td>
+    <td><input type="number" min="1" max="31" value="${r.due_day}" data-i="${i}" data-k="due_day" style="width:70px" aria-label="Due day"><br><span class="note">${r.frequency==="Weekly"?["","Mon","Tue","Wed","Thu","Fri","Sat","Sun"][r.due_day]||"":"day "+r.due_day}</span></td>
+    <td><input type="number" min="0" max="30" value="${r.grace_days}" data-i="${i}" data-k="grace_days" style="width:70px" aria-label="Grace days"></td>
+    <td><input value="${esc(r.l1_email||"")}" data-i="${i}" data-k="l1_email" aria-label="Level 1 escalation email" style="min-width:180px"></td>
+    <td><input value="${esc(r.l2_email||"")}" data-i="${i}" data-k="l2_email" aria-label="Level 2 escalation email" style="min-width:180px"></td>
+    <td class="nw">${r.portal?`<a href="${esc(r.portal)}" target="_blank" rel="noopener">Update page</a> · <a href="${esc(r.portal)}/input.xlsx">Input file</a><br><button type="button" class="ghost" data-copy="${esc(r.portal)}">Copy link</button>`:r.id?'<span class="note">Sign in to see links</span>':'<span class="note">Save to create</span>'}</td>
+    <td><button type="button" class="ghost" data-del="${i}">Remove</button></td></tr>`).join("");
+}
+$("mx-rows").addEventListener("input",e=>{const i=e.target.dataset.i,k=e.target.dataset.k;if(i==null)return;mx.rows[i][k]=(k==="due_day"||k==="grace_days")?+e.target.value:e.target.value;});
+$("mx-rows").addEventListener("click",async e=>{
+  if(e.target.dataset.del!=null){mx.rows.splice(+e.target.dataset.del,1);renderMatrix();}
+  if(e.target.dataset.copy){try{await navigator.clipboard.writeText(e.target.dataset.copy);e.target.textContent="Copied";}catch(x){e.target.textContent=e.target.dataset.copy;}}
+});
+$("mx-add").addEventListener("click",()=>{mx.rows.push({discipline:"",person:"",email:"",frequency:"Monthly",due_day:1,grace_days:5,l1_email:"",l2_email:"",active:1});renderMatrix();});
+$("mx-save").addEventListener("click",async()=>{
+  try{const body=mx.rows.filter(r=>r.active!==0||!r.id).map(r=>({id:r.id||null,discipline:r.discipline,person:r.person,email:r.email,frequency:r.frequency,due_day:+r.due_day,grace_days:+r.grace_days,l1_email:r.l1_email||"",l2_email:r.l2_email||"",active:true}));
+    const r=await api("/api/matrix",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    $("mx-toast").innerHTML=`<span class="ok-t">Saved. ${r.reminded||0} reminder(s) sent, ${r.created} escalation(s) raised, ${r.closed} closed.</span>`;await loadMatrix();await load();}
+  catch(e){$("mx-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}
+});
 // ------------------------------------------------ outbox
 async function loadOutbox(){
   const rows=await api("/api/outbox");const mode=config.email_mode;
@@ -438,16 +494,16 @@ async function loadOutbox(){
 function renderAll(){renderFilters();const rows=analyze();renderKPIs(rows);renderChart(rows);renderInsights(rows);renderEscalations();renderForm();renderLog();}
 ["f-proj","f-period","f-cat","f-status"].forEach((id,i)=>$(id).addEventListener("change",e=>{st[["proj","period","cat","status"][i]]=e.target.value;renderAll();}));
 $("key").addEventListener("change",e=>{const id=e.target.dataset.id;if(!id)return;e.target.checked?st.hidden.delete(id):st.hidden.add(id);renderChart(analyze());});
-function route(){const v=(location.hash||"#dashboard").slice(1);const views=["dashboard","escalations","rules","data","outbox"];const cur=views.includes(v)?v:"dashboard";
+function route(){const v=(location.hash||"#dashboard").slice(1);const views=["dashboard","escalations","matrix","rules","data","outbox"];const cur=views.includes(v)?v:"dashboard";
   views.forEach(x=>$("v-"+x).hidden=x!==cur);document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.v===cur));
-  if(cur==="rules")loadRules().catch(()=>{});if(cur==="outbox")loadOutbox().catch(()=>{});}
+  if(cur==="rules")loadRules().catch(()=>{});if(cur==="matrix")loadMatrix().catch(()=>{});if(cur==="outbox")loadOutbox().catch(()=>{});}
 window.addEventListener("hashchange",route);
 $("btn-login").addEventListener("click",()=>{$("login-err").hidden=true;$("pw").value="";$("login-dlg").showModal();});
 $("login-cancel").addEventListener("click",()=>$("login-dlg").close());
 $("login-form").addEventListener("submit",async e=>{e.preventDefault();const p=$("pw").value;
   const r=await fetch("/api/login",{method:"POST",headers:{"X-Admin-Password":p}});
-  if(r.ok){pw=p;try{sessionStorage.setItem("mta-pw",p);}catch(x){}$("login-dlg").close();updateWho();}else $("login-err").hidden=false;});
-load().then(route).catch(e=>{document.querySelector(".wrap").insertAdjacentHTML("beforeend",`<div class="banner">Could not load data: ${esc(e.message)}</div>`);});
+  if(r.ok){pw=p;try{sessionStorage.setItem("mta-pw",p);}catch(x){}$("login-dlg").close();updateWho();if(location.hash==="#matrix")loadMatrix();}else $("login-err").hidden=false;});
+load().then(()=>{route();api("/api/matrix").then(m=>{mx=m;const od=m.rows.filter(r=>r.active&&r.compliance&&r.compliance.status==="Overdue").length;$("od-badge").hidden=!od;$("od-badge").textContent=od;}).catch(()=>{});}).catch(e=>{document.querySelector(".wrap").insertAdjacentHTML("beforeend",`<div class="banner">Could not load data: ${esc(e.message)}</div>`);});
 })();
 </script>
 </body></html>
