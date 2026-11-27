@@ -110,6 +110,17 @@ table.sheet input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)
 .hdrgrid label{font-weight:600}
 .bcbox{border-top:1px solid var(--line);margin-top:18px;padding-top:14px;display:grid;gap:10px}
 .appr{display:grid;grid-template-columns:110px minmax(0,320px) auto;gap:6px 10px;align-items:center}
+.psgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 18px;margin:12px 0}
+.psgrid label{display:grid;gap:4px;font:600 12.5px var(--body)}
+.wfgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-top:8px}
+.wf h4{margin:0 0 6px;font:700 14px var(--display)}
+.wf table.sheet input{width:100%;min-width:90px}
+.st{display:inline-block;font:600 11.5px var(--body);padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.st-Approved{color:var(--early)}.st-Pending{color:var(--amber)}.st-Draft{color:var(--muted)}.st-Rejected{color:var(--late)}
+.bline{display:inline-flex;align-items:center;gap:8px;font:700 14px var(--display);color:var(--accent)}
+#ps-rb{border:2px solid var(--accent)}
+dialog .opts{display:grid;gap:8px;margin-top:12px}
+dialog .opts button{text-align:left;padding:10px 12px}
 .chain{display:flex;flex-wrap:wrap;gap:6px}.chain span{font-size:12px;border-radius:6px;padding:2px 8px;border:1px solid var(--line)}
 .chain .Approved{color:var(--early);border-color:var(--early)}.chain .Rejected{color:var(--late);border-color:var(--late)}
 .chain .Pending{color:var(--amber);border-color:var(--amber);font-weight:600}.chain .Waiting,.chain .Cancelled{color:var(--muted)}
@@ -122,7 +133,7 @@ table.sheet input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)
 </header>
 <nav aria-label="Sections">
   <a href="#dashboard" data-v="dashboard">Dashboard</a>
-  <a href="#projects" data-v="projects">Projects &amp; milestones</a>
+  <a href="#projects" data-v="projects">Project Setup</a>
   <a href="#escalations" data-v="escalations">Escalations &amp; approvals<span class="badge" id="pend-badge" hidden></span></a>
   <a href="#matrix" data-v="matrix">Responsibility matrix<span class="badge" id="od-badge" hidden></span></a>
   <a href="#rules" data-v="rules">Escalation rules</a>
@@ -132,7 +143,7 @@ table.sheet input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)
 
 <!-- ======================= DASHBOARD -->
 <section id="v-dashboard" class="wrap">
-  <div class="banner" id="empty-banner" hidden><b>No projects yet.</b> Start on <a href="#projects">Projects &amp; milestones</a>: add a project with its start and end date, then its milestones and baselines. Then record forecasts each month under <a href="#data">Data entry</a>.</div>
+  <div class="banner" id="empty-banner" hidden><b>No projects yet.</b> Start on <a href="#projects">Project Setup</a>: enter the project details and approval workflow, then add the milestones and send them for baseline approval. Then record forecasts each month under <a href="#data">Data entry</a>.</div>
   <div class="card filters">
     <label class="f">Project<select id="f-proj"></select></label>
     <label class="f">Reporting period (as-of)<select id="f-period"></select></label>
@@ -163,22 +174,63 @@ table.sheet input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)
   </div>
 </section>
 
-<!-- ======================= PROJECTS -->
+<!-- ======================= PROJECT SETUP -->
 <section id="v-projects" class="wrap" hidden>
   <div class="card">
-    <h2>Projects</h2>
-    <p class="note" style="margin:4px 0 12px">Each project needs a start and end date. The monthly progress report shows one Reporting Month Forecast column for every month from the start month to the end month.</p>
-    <div class="scroll"><table class="sheet"><thead><tr><th>Project ID</th><th>Project Name</th><th>Start date</th><th>End date</th><th>Project manager</th><th>Milestones</th><th></th></tr></thead><tbody id="pj-rows"></tbody></table></div>
-    <span class="toast" id="pj-toast" aria-live="polite"></span>
+    <div class="chead"><h2>Project Setup</h2>
+      <div class="row"><label class="f" style="min-width:260px">Project<select id="ps-proj"></select></label><button type="button" id="ps-new" style="align-self:end">+ New project</button></div></div>
+    <div class="psgrid">
+      <label>Project ID <span class="note">(short code, e.g. PRJ-01)</span><input id="ps-id"></label>
+      <label>Project Name<input id="ps-name"></label>
+      <label>Project Start Date<input id="ps-start" type="date"></label>
+      <label>Project End Date<input id="ps-end" type="date"></label>
+      <label>Project Controls Name<input id="ps-cname"></label>
+      <label>Project Controls ID<input id="ps-cid"></label>
+      <label>Project Manager<input id="ps-pm"></label>
+      <label>Project Manager ID<input id="ps-pmid"></label>
+    </div>
+    <h3 style="margin:14px 0 2px">Approval workflow</h3>
+    <p class="note" style="margin:0">Each request is approved in order: Level 1, then Level 2, then Level 3. The email receives the approval link; leave Level 2 or 3 empty if not needed.</p>
+    <div class="wfgrid">
+      <div class="wf"><h4>For addition of milestones into baseline</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>ID</th><th>Email (approval link)</th></tr></thead><tbody id="wf-addition"></tbody></table></div>
+      <div class="wf"><h4>For rebaseline of milestones</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>ID</th><th>Email (approval link)</th></tr></thead><tbody id="wf-rebaseline"></tbody></table></div>
+    </div>
+    <div class="row" style="margin-top:14px"><button type="button" class="primary" id="ps-save">Save project setup</button><button type="button" class="ghost" id="ps-del">Delete project</button><span class="toast" id="ps-toast" aria-live="polite"></span></div>
   </div>
-  <div class="card">
-    <div class="chead"><h2>Project milestones</h2><label class="f" style="min-width:260px">Project<select id="ms-proj"></select></label></div>
-    <p class="note" style="margin:4px 0 12px">Add each milestone with a unique ID and its baseline date (within the project dates). The discipline links the milestone to the responsibility matrix for update reminders and escalation. Once a forecast has been reported, the baseline can only change through "If baseline to be changed" on the monthly report.</p>
-    <div class="scroll"><table class="sheet"><thead><tr><th>S.No</th><th>Milestone ID</th><th>Project Milestone</th><th>Discipline</th><th>Baseline Date</th><th>Owner</th><th>Priority</th><th></th></tr></thead><tbody id="ms-rows"></tbody></table></div>
+
+  <div class="card" id="ps-ms-card">
+    <div class="chead"><h2>Baseline milestones</h2>
+      <div class="row"><span class="bline" id="ps-bline"></span><button type="button" class="primary" id="ps-rb-open">Rebaseline / New baseline</button></div></div>
+    <p class="note" style="margin:4px 0 10px">Add milestones, then click <b>Save milestones</b>. You will be asked whether the list is complete: <b>Yes</b> starts the approval workflow for addition into the baseline, <b>No</b> keeps them as a draft. Milestones join the baseline (and the dashboard and monthly report) only after the last level approves. Later additions follow the same steps.</p>
+    <div class="row" id="ps-counts" style="margin-bottom:8px"></div>
+    <div class="scroll"><table class="sheet"><thead><tr><th>S.No</th><th>Milestone ID</th><th>Project Milestone</th><th>Discipline</th><th>Baseline Date</th><th>Owner</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody id="ps-ms"></tbody></table></div>
+    <div class="row" style="margin-top:10px"><button type="button" id="ps-addrow">+ Add milestone row</button></div>
     <datalist id="disc-list"></datalist>
-    <span class="toast" id="ms-toast" aria-live="polite"></span>
+    <div class="row" style="margin-top:12px">
+      <label class="f" style="min-width:200px">Submitted by<input id="ps-by" placeholder="Your name"></label>
+      <label class="f" style="min-width:220px">Your email (approval updates)<input id="ps-byemail" type="email" placeholder="you@company.com"></label>
+      <button type="button" class="primary" id="ps-savems" style="align-self:end">Save milestones</button>
+    </div>
+    <p class="toast" id="ps-mstoast" aria-live="polite"></p>
+    <h3 style="margin:16px 0 6px">Approval requests</h3>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Workflow</th><th>Milestones</th><th>Requested</th><th>Approval chain</th><th>Status</th></tr></thead><tbody id="ps-req"></tbody></table></div>
+  </div>
+
+  <div class="card" id="ps-rb" hidden>
+    <div class="chead"><h2 id="ps-rb-title">Rebaseline</h2><button type="button" class="ghost" id="ps-rb-close">Close</button></div>
+    <p class="note" style="margin:4px 0 10px">Change the baseline date of existing milestones and/or add new milestones. Click <b>Save rebaseline</b>; if it is complete it goes to the rebaseline approval workflow, otherwise it is kept as a draft. Nothing changes until the last level approves.</p>
+    <h3 style="margin:6px 0">Change baseline dates</h3>
+    <div class="scroll"><table class="sheet"><thead><tr><th>Milestone ID</th><th>Project Milestone</th><th>Current baseline</th><th>New baseline</th><th>Change</th><th>Reason for change</th></tr></thead><tbody id="rb-ch"></tbody></table></div>
+    <h3 style="margin:14px 0 6px">New milestones in this baseline</h3>
+    <div class="scroll"><table class="sheet"><thead><tr><th>Milestone ID</th><th>Project Milestone</th><th>Discipline</th><th>Baseline Date</th><th>Owner</th><th>Priority</th><th></th></tr></thead><tbody id="rb-new"></tbody></table></div>
+    <div class="row" style="margin-top:8px"><button type="button" id="rb-addrow">+ Add new milestone</button>
+      <label class="f" style="min-width:280px">Reason for adding new milestones<input id="rb-newreason"></label></div>
+    <div class="row" style="margin-top:12px"><button type="button" class="primary" id="rb-save">Save rebaseline</button><button type="button" class="ghost" id="rb-discard">Discard draft</button><span class="toast" id="rb-toast" aria-live="polite"></span></div>
   </div>
 </section>
+
+<dialog id="ask-dlg"><form method="dialog"><h2 id="ask-title">Are the milestones complete?</h2><p class="note" id="ask-text"></p>
+  <div class="opts"><button type="button" class="primary" id="ask-yes">Yes</button><button type="button" id="ask-no">No</button><button type="button" class="ghost" id="ask-cancel">Cancel</button></div></form></dialog>
 
 <!-- ======================= ESCALATIONS -->
 <section id="v-escalations" class="wrap" hidden>
@@ -190,7 +242,7 @@ table.sheet input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)
   <div class="card"><div class="row" style="margin-bottom:10px"><label class="f" style="min-width:200px">Show<select id="esc-filter"><option value="Pending approval">Pending approval</option><option value="all">All escalations</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option><option value="Acknowledged">Acknowledged</option><option value="Closed">Closed / superseded</option></select></label></div>
     <div class="scroll"><table><thead><tr><th>#</th><th>Milestone</th><th>Level</th><th>Delay at escalation</th><th>Delay now</th><th>Sent to</th><th>Status</th><th>Raised</th><th>Decision</th></tr></thead><tbody id="esc-rows"></tbody></table></div>
   </div>
-  <div class="card"><h2>Baseline change requests</h2><p class="note" style="margin:4px 0 10px">Approved one level at a time (L1 → L2 → L3 …). Signed-in admins can open the current approver's page.</p>
+  <div class="card"><h2>Baseline approval requests</h2><p class="note" style="margin:4px 0 10px">Milestone additions and rebaselines, approved one level at a time (L1 → L2 → L3) by the people set on Project Setup. Signed-in admins can open the current approver's page.</p>
     <div class="scroll"><table><thead><tr><th>#</th><th>Project</th><th>Changes</th><th>Requested</th><th>Approval chain</th><th>Status</th></tr></thead><tbody id="bl-rows"></tbody></table></div></div>
 </section>
 
@@ -237,8 +289,7 @@ table.sheet input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)
       <p class="note" style="margin:0">List each milestone whose baseline should move. The request goes to the L1 approver first; each next level is asked only after the previous one approves. The new baseline applies only when every level has approved.</p>
       <div class="scroll"><table class="sheet"><thead><tr><th>Milestone</th><th>Current baseline</th><th>New baseline</th><th>Change</th><th>Reason for baseline change</th><th></th></tr></thead><tbody id="bc-rows"></tbody></table></div>
       <div><button type="button" id="bc-add">Add milestone</button></div>
-      <div class="appr" id="appr-rows"></div>
-      <div><button type="button" id="appr-add">Add approval level</button></div>
+      <p class="note" id="rb-chain" style="margin:0"></p>
     </div>
     <div class="row" style="margin-top:14px"><button type="button" class="primary" id="mr-submit">Submit report</button><span class="toast" id="mr-toast" aria-live="polite"></span></div>
   </div>
@@ -282,6 +333,7 @@ const SCOL={"Completed":"var(--done)","Delayed":"var(--late)","Ahead of Schedule
   "Pending approval":"var(--amber)","Approved":"var(--early)","Acknowledged":"var(--on)","Rejected":"var(--late)","Closed":"var(--muted)","Superseded":"var(--muted)"};
 const PAL=["#1F77B4","#E67E22","#2CA02C","#D62728","#9467BD","#8C564B","#D35FB7","#17BECF","#A8A21E","#5A63C8","#AD494A","#6B8E23","#E7969C","#7B4173","#3182BD"];
 const $=id=>document.getElementById(id);
+let msAll=[],workflows={};
 let projects=[],ms=[],msBy={},cats=[],obs=[],escs=[],config={},pendingBase=new Set(),savedApprovers={},blreqs=[];
 const st={proj:"all",period:"latest",cat:"all",status:"all",hidden:new Set(),view:"icicle"};
 const monthKey=d=>new Date(d*DAY).toISOString().slice(0,7);
@@ -299,8 +351,9 @@ async function api(path,opts={}){
 async function load(){
   const [data,e,c]=await Promise.all([api("/api/data"),api("/api/escalations"),api("/api/config")]);
   config=c;escs=e;
-  projects=data.P.map(([id,name,freq,sd,ed,mgr])=>({id,name,freq,start:day(sd),end:day(ed),mgr}));
-  ms=data.M.map(([p,id,name,cat,base,owner,prio,desc])=>({p,id,name,cat,base:day(base),owner,prio,desc}));
+  projects=data.P.map(([id,name,freq,sd,ed,mgr,bno])=>({id,name,freq,start:day(sd),end:day(ed),mgr,bno:bno||0}));
+  msAll=data.M.map(([p,id,name,cat,base,owner,prio,desc,status,note])=>({p,id,name,cat,base:day(base),owner,prio,desc,status:status||"Approved",note}));
+  ms=msAll.filter(m=>m.status==="Approved");workflows=data.workflows||{};
   $("empty-banner").hidden=projects.length>0;
   msBy=Object.fromEntries(ms.map(m=>[m.id,m]));cats=[...new Set(ms.map(m=>m.cat).filter(Boolean))];
   obs=data.O.map(([m,r,f,a,c,id,pg])=>({m,r:day(r),f:day(f),a:day(a),c,seq:id,pg}));
@@ -384,14 +437,15 @@ function renderIcicle(rows){
   $("chart-title").textContent=`Milestone Icicle Chart · ${cp} ${P.name}`+(st.proj==="all"&&projects.length>1?" (first project, choose one above)":"");
   const pobs=obs.filter(o=>msBy[o.m]?.p===cp&&o.r<=asOf);
   const months=[...new Set(pobs.map(o=>monthKey(o.r)))].sort();
-  const rowsY=["Baseline",...months.map(monthLabel)];
+  const rowsY=[P.bno?`Baseline ${P.bno}`:"Baseline",...months.map(monthLabel)];
+  const pend=msAll.filter(m=>m.p===cp&&m.status==="Pending");
   const series=slots.map((r,i)=>{
     const pts=[{row:0,x:r.m.base,base:true}];
     months.forEach((k,j)=>{const o=pobs.filter(x=>x.m===r.m.id&&monthKey(x.r)===k).sort((a,b)=>b.r-a.r)[0];if(o)pts.push({row:j+1,x:o.f,o});});
     return {r,col:PAL[i],pts,hidden:st.hidden.has(r.m.id)};
   });
   const vis=series.filter(s=>!s.hidden);
-  const xs=vis.flatMap(s=>s.pts.map(p=>p.x));
+  const xs=vis.flatMap(s=>s.pts.map(p=>p.x)).concat(pend.map(m=>m.base));
   const W=900,L=96,R=24,T=66,RG=Math.max(46,Math.min(80,300/Math.max(1,rowsY.length-1))),H=T+20+(rowsY.length-1)*RG+30;
   svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
   const el=(n,a,p=svg)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
@@ -424,7 +478,9 @@ function renderIcicle(rows){
       const show=()=>{$("readout").textContent=msg;};["mouseenter","focus","click"].forEach(e=>c.addEventListener(e,show));
     });
   });
-  $("ilegend").innerHTML="<b>Legend</b>"+series.filter(s=>!s.hidden).map(s=>`<span style="color:${s.col}"><i></i><span style="color:var(--ink)">${esc(s.r.m.name)}</span></span>`).join("")+
+  pend.forEach(m=>{const x=X(m.base),y=Y(0);const c=el("path",{d:`M${x} ${y-7} l7 7 l-7 7 l-7 -7Z`,fill:"var(--surface)",stroke:"var(--amber)","stroke-width":2,"stroke-dasharray":"3 2"});
+    c.setAttribute("tabindex","0");const msg=`${m.id} ${m.name}: proposed baseline ${fmt(m.base)} - awaiting approval (${m.note||"pending"})`;["mouseenter","focus","click"].forEach(e=>c.addEventListener(e,()=>{$("readout").textContent=msg;}));});
+  $("ilegend").innerHTML="<b>Legend</b>"+(pend.length?`<span><svg width="14" height="14"><path d="M7 1 13 7 7 13 1 7Z" fill="none" stroke="var(--amber)" stroke-width="2" stroke-dasharray="3 2"/></svg>${pend.length} milestone(s) awaiting baseline approval</span>`:"")+series.filter(s=>!s.hidden).map(s=>`<span style="color:${s.col}"><i></i><span style="color:var(--ink)">${esc(s.r.m.name)}</span></span>`).join("")+
     `<span class="note">◆ with dark outline = completed · red ring = moved ≥ ${CFG.sig} d since the previous report</span>`;
   renderKey(series);
 }
@@ -583,7 +639,9 @@ function renderMonthly(){
       <td class="num c-chg">${m&&nb?((nb-m.base>0?"+":"")+(nb-m.base)+" d"):""}</td>
       <td><input class="reason" data-bi="${i}" data-k="reason" value="${esc(b.reason)}" style="min-width:260px" aria-label="Reason for baseline change"></td>
       <td><button type="button" class="ghost" data-bdel="${i}">Remove</button></td></tr>`;}).join("");
-  $("appr-rows").innerHTML=mr.appr.map((a,i)=>`<label for="ap-${i}">L${i+1} approver</label><input id="ap-${i}" type="email" data-ai="${i}" value="${esc(a)}" placeholder="approver${i+1}@company.com">${i>0&&i===mr.appr.length-1?`<button type="button" class="ghost" data-adel="${i}" style="justify-self:start">Remove</button>`:"<span></span>"}`).join("");
+  const ch=(workflows[mr.proj]||{}).rebaseline||[];
+  $("rb-chain").innerHTML=ch.length?"Approval: "+ch.map(([l,n,id])=>`Level ${l} <b>${esc(n)}</b>${id?" ("+esc(id)+")":""}`).join(" → ")+' <span class="note">(set on Project Setup)</span>'
+    :'<span class="bad">No rebaseline approval workflow is set for this project. Set it on <a href="#projects">Project Setup</a> first.</span>';
 }
 $("mr-proj").addEventListener("change",e=>{mr.proj=e.target.value;mr.period=null;renderMonthly();});
 $("mr-period").addEventListener("change",e=>{mr.period=e.target.value;const p=mr.proj;mr.proj=p;const keep={bc:mr.bc,appr:mr.appr};mrInit();Object.assign(mr,keep);renderMonthly();});
@@ -609,90 +667,161 @@ $("bc-rows").addEventListener("change",e=>{const i=e.target.dataset.bi;if(i==nul
   tr.querySelector(".c-cur").textContent=m?fmt(m.base,true):"";tr.querySelector(".c-chg").textContent=m&&nb?((nb-m.base>0?"+":"")+(nb-m.base)+" d"):"";});
 $("bc-rows").addEventListener("click",e=>{const i=e.target.dataset.bdel;if(i!=null){mr.bc.splice(+i,1);if(!mr.bc.length)mr.bc.push({milestone_id:"",new_baseline:"",reason:""});renderMonthly();}});
 $("bc-add").addEventListener("click",()=>{mr.bc.push({milestone_id:"",new_baseline:"",reason:""});renderMonthly();});
-$("appr-rows").addEventListener("input",e=>{const i=e.target.dataset.ai;if(i!=null)mr.appr[i]=e.target.value;});
-$("appr-rows").addEventListener("click",e=>{const i=e.target.dataset.adel;if(i!=null){mr.appr.splice(+i,1);renderMonthly();}});
-$("appr-add").addEventListener("click",()=>{mr.appr.push("");renderMonthly();});
+
 $("mr-submit").addEventListener("click",async()=>{
   const rows=Object.entries(mr.rows).filter(([,r])=>!r.locked).map(([id,r])=>({milestone_id:id,progress:r.progress,
     completed:r.progress==="Completed"&&r.completed?iso(r.completed):null,forecast:r.progress!=="Completed"&&r.forecast?iso(r.forecast):null,reason:r.reason}));
   const bc=mr.bc.filter(b=>b.milestone_id||b.new_baseline);
-  const payload={project_id:mr.proj,period:mr.period,submitted_by:$("mr-by").value,submitter_email:$("mr-email").value,rows,baseline_changes:bc,
-    approvers:bc.length?mr.appr.map(a=>a.trim()).filter((a,i,arr)=>a||arr.slice(i).some(Boolean)):[]};
+  const payload={project_id:mr.proj,period:mr.period,submitted_by:$("mr-by").value,submitter_email:$("mr-email").value,rows,baseline_changes:bc};
   $("mr-toast").textContent="Saving…";
   try{const r=await api("/api/monthly",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     $("mr-toast").innerHTML=`<span class="ok-t">Saved ${r.saved} forecast(s) for ${fmt(day(r.rep_date))}.${r.request_id?` Baseline change request #${r.request_id} sent to the L1 approver.`:""} ${r.created} escalation(s) raised, ${r.closed} closed.</span>`;
     const keepP=mr.period;await load();mr.period=keepP;mrInit();renderMonthly();}
   catch(e){$("mr-toast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
 });
-// ------------------------------------------------ projects & milestones
-const pj={edit:null,msProj:null,newRow:null};
-function renderProjects(){
-  const cnt=pid=>ms.filter(m=>m.p===pid).length;
-  const row=(p,isNew)=>{const ed=isNew||pj.edit===p.id;
-    if(!ed)return `<tr><td><b>${esc(p.id)}</b></td><td>${esc(p.name)}</td><td class="num">${fmt(p.start,true)}</td><td class="num">${fmt(p.end,true)}</td><td>${esc(p.mgr||"")}</td>
-      <td class="num">${cnt(p.id)}</td><td class="nw"><button type="button" data-pedit="${esc(p.id)}">Edit</button> <button type="button" class="ghost" data-pdel="${esc(p.id)}">Delete</button></td></tr>`;
-    return `<tr><td><input id="pj-id" value="${esc(p.id||"")}" ${isNew?"":"disabled"} placeholder="e.g. PRJ-001" aria-label="Project ID" style="width:110px"></td>
-      <td><input id="pj-name" value="${esc(p.name||"")}" placeholder="Project name" aria-label="Project name" style="min-width:220px"></td>
-      <td><input id="pj-start" type="date" value="${p.start!=null?iso(p.start):""}" aria-label="Start date"></td>
-      <td><input id="pj-end" type="date" value="${p.end!=null?iso(p.end):""}" aria-label="End date"></td>
-      <td><input id="pj-mgr" value="${esc(p.mgr||"")}" placeholder="Name" aria-label="Project manager"></td><td class="num">${isNew?"":cnt(p.id)}</td>
-      <td class="nw"><button type="button" class="primary" id="pj-save" data-new="${isNew?1:0}">${isNew?"Add project":"Save"}</button> <button type="button" class="ghost" id="pj-cancel">Cancel</button></td></tr>`;};
-  $("pj-rows").innerHTML=projects.map(p=>row(p,false)).join("")+(pj.edit==="__new"?row({},true):
-    `<tr><td colspan="7"><button type="button" id="pj-add">+ Add project</button>${projects.length?"":' <span class="note">No projects yet.</span>'}</td></tr>`);
-  // milestones
-  if(!projects.some(p=>p.id===pj.msProj))pj.msProj=projects[0]?.id||null;
-  opt($("ms-proj"),projects.map(p=>[p.id,`${p.id}  ${p.name}`]),pj.msProj||"");
-  $("disc-list").innerHTML=[...new Set([...(mx.rows||[]).filter(r=>r.active).map(r=>r.discipline),...cats])].map(d=>`<option value="${esc(d)}">`).join("");
-  if(!pj.msProj){$("ms-rows").innerHTML='<tr><td colspan="8" class="empty">Add a project first.</td></tr>';return;}
-  const P=projects.find(p=>p.id===pj.msProj);
-  const list=ms.filter(m=>m.p===pj.msProj);
-  const reported=mid=>obs.some(o=>o.m===mid);
-  const prios=["","Critical","High","Medium","Low"];
-  const mrow=(m,i,isNew)=>{const lock=!isNew&&reported(m.id);const k=isNew?"__new":m.id;
-    return `<tr data-row="${esc(k)}"><td class="num">${isNew?"":i+1}</td>
-    <td>${isNew?`<input data-f="id" placeholder="e.g. ${esc(P.id)}-M${String(list.length+1).padStart(2,"0")}" style="width:130px" aria-label="Milestone ID">`:`<b>${esc(m.id)}</b>`}</td>
-    <td><input data-f="name" value="${esc(m.name||"")}" placeholder="e.g. Engineering" style="min-width:200px" aria-label="Milestone name"></td>
-    <td><input data-f="category" list="disc-list" value="${esc(m.cat||"")}" placeholder="Discipline" style="width:140px" aria-label="Discipline"></td>
-    <td><input data-f="baseline" type="date" value="${m.base!=null?iso(m.base):""}" ${lock?"disabled title='Use the baseline change approval on the monthly report'":""} min="${P.start!=null?iso(P.start):""}" max="${P.end!=null?iso(P.end):""}" aria-label="Baseline date">${lock?'<br><span class="note" style="font-size:11px">change via approval</span>':""}</td>
-    <td><input data-f="owner" value="${esc(m.owner||"")}" placeholder="Name" style="width:140px" aria-label="Owner"></td>
-    <td><select data-f="priority" aria-label="Priority">${prios.map(x=>`<option ${x===(m.prio||"")?"selected":""} value="${x}">${x||"–"}</option>`).join("")}</select></td>
-    <td class="nw"><button type="button" class="primary" data-msave="${esc(k)}">${isNew?"Add":"Save"}</button>${isNew?"":` <button type="button" class="ghost" data-mdel="${esc(m.id)}" ${lock?"disabled title='Has reported forecasts'":""}>Delete</button>`}</td></tr>`;};
-  $("ms-rows").innerHTML=list.map((m,i)=>mrow(m,i,false)).join("")+mrow({},0,true)+
-    `<tr><td colspan="8" class="note">Project window: ${fmt(P.start)} – ${fmt(P.end)}. Fill the last row and click Add for each new milestone.</td></tr>`;
+// ------------------------------------------------ project setup
+const ps={pid:null,isNew:false,setup:null,newRows:[],rbOpen:false,rb:null,askFn:null};
+const PRIOS=["","Critical","High","Medium","Low"];
+async function loadSetup(){
+  if(!projects.some(p=>p.id===ps.pid))ps.pid=projects[0]?.id||null;
+  if(!ps.pid||ps.isNew){ps.setup=null;renderSetup();return;}
+  try{ps.setup=await api(`/api/projects/${encodeURIComponent(ps.pid)}/setup`);}catch(e){ps.setup=null;}
+  const d=ps.setup?.rebaseline_draft;ps.rb=null;
+  if(d){ps.rb={changes:{},news:[],reason:""};d.items.forEach(i=>{if(i.old_baseline)ps.rb.changes[i.milestone_id]={nb:i.new_baseline,reason:i.reason||""};});
+    ps.setup.milestones.filter(m=>m.rebase_req===d.id&&m.baseline_status==="Draft").forEach(m=>ps.rb.news.push({id:m.id,name:m.name,category:m.category||"",baseline:m.baseline,owner:m.owner||"",priority:m.priority||""}));
+    ps.rb.reason=(d.items.find(i=>!i.old_baseline)||{}).reason||"";}
+  renderSetup();
 }
-$("pj-rows").addEventListener("click",async e=>{
-  const t=e.target;
-  if(t.id==="pj-add"){pj.edit="__new";renderProjects();return;}
-  if(t.id==="pj-cancel"){pj.edit=null;renderProjects();return;}
-  if(t.dataset.pedit){pj.edit=t.dataset.pedit;renderProjects();return;}
-  if(t.dataset.pdel){try{await api(`/api/projects/${encodeURIComponent(t.dataset.pdel)}`,{method:"DELETE"});$("pj-toast").innerHTML='<span class="ok-t">Project deleted.</span>';await load();}catch(x){$("pj-toast").innerHTML=`<span class="bad">${esc(x.message)}</span>`;}return;}
-  if(t.id==="pj-save"){const body={id:$("pj-id").value,name:$("pj-name").value,start_date:$("pj-start").value,end_date:$("pj-end").value,manager:$("pj-mgr").value};
-    try{if(t.dataset.new==="1")await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      else await api(`/api/projects/${encodeURIComponent(pj.edit)}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      const newId=body.id.trim();pj.edit=null;if(t.dataset.new==="1"){pj.msProj=newId;mr.proj=newId;mr.period=null;}
-      $("pj-toast").innerHTML='<span class="ok-t">Project saved.</span>';await load();}
-    catch(x){$("pj-toast").innerHTML=`<span class="bad">${esc(x.message)}</span>`;}}
+function wfRows(key){const lv=ps.isNew||!ps.setup?[]:ps.setup.workflows[key]||[];
+  return [1,2,3].map(l=>{const v=lv.find(x=>x.level===l)||{};return `<tr><td><b>Level ${l}</b></td><td><input data-wf="${key}" data-l="${l}" data-k="name" value="${esc(v.name||"")}" placeholder="Name" aria-label="${key} level ${l} name"></td>
+    <td><input data-wf="${key}" data-l="${l}" data-k="person_id" value="${esc(v.person_id||"")}" placeholder="ID" aria-label="${key} level ${l} ID"></td>
+    <td><input data-wf="${key}" data-l="${l}" data-k="email" type="email" value="${esc(v.email||"")}" placeholder="${ps.setup&&!ps.setup.admin&&v.name?"(sign in to see)":"name@company.com"}" aria-label="${key} level ${l} email"></td></tr>`;}).join("");}
+function msRow(m,i,isNew){const st=isNew?"New":m.baseline_status||"Approved";const lockAll=st==="Pending";const lockBase=lockAll||st==="Approved";const k=isNew?`new-${i}`:m.id;
+  const P=projects.find(p=>p.id===ps.pid)||{};
+  return `<tr data-ms="${esc(k)}" ${isNew?'data-new="1"':""}><td class="num">${i+1}</td>
+    <td>${isNew?`<input data-f="id" value="${esc(m.id||"")}" placeholder="e.g. M${String(i+1).padStart(2,"0")}" style="width:110px" aria-label="Milestone ID">`:`<b>${esc(m.id)}</b>`}</td>
+    <td><input data-f="name" value="${esc(m.name||"")}" ${lockAll?"disabled":""} placeholder="e.g. Engineering" style="min-width:190px" aria-label="Milestone name"></td>
+    <td><input data-f="category" list="disc-list" value="${esc(m.category||"")}" ${lockAll?"disabled":""} placeholder="Discipline" style="width:130px" aria-label="Discipline"></td>
+    <td><input data-f="baseline" type="date" value="${esc(m.baseline||"")}" ${lockBase?"disabled":""} min="${P.start!=null?iso(P.start):""}" max="${P.end!=null?iso(P.end):""}" aria-label="Baseline date"></td>
+    <td><input data-f="owner" value="${esc(m.owner||"")}" ${lockAll?"disabled":""} placeholder="Name" style="width:120px" aria-label="Owner"></td>
+    <td><select data-f="priority" ${lockAll?"disabled":""} aria-label="Priority">${PRIOS.map(x=>`<option value="${x}" ${x===(m.priority||"")?"selected":""}>${x||"–"}</option>`).join("")}</select></td>
+    <td>${isNew?'<span class="st st-Draft">New</span>':`<span class="st st-${st}">${st==="Approved"?"In baseline":st==="Pending"?"Awaiting approval":st}</span>`}${!isNew&&m.status_note&&st!=="Approved"?`<br><span class="note" style="font-size:11px">${esc(m.status_note)}</span>`:""}</td>
+    <td>${isNew?`<button type="button" class="ghost" data-rmnew="${i}">Remove</button>`:(st==="Draft"||st==="Rejected")?`<button type="button" class="ghost" data-delms="${esc(m.id)}">Delete</button>`:""}</td></tr>`;}
+function renderSetup(){
+  opt($("ps-proj"),[...projects.map(p=>[p.id,`${p.id}  ${p.name}`]),...(ps.isNew?[["__new","(new project)"]]:[])],ps.isNew?"__new":(ps.pid||""));
+  const pr=ps.isNew?{}:(ps.setup?.project||{});
+  const set=(id,v)=>{$(id).value=v||"";};
+  set("ps-id",pr.id);set("ps-name",pr.name);set("ps-start",pr.start_date);set("ps-end",pr.end_date);set("ps-cname",pr.controls_name);set("ps-cid",pr.controls_id);set("ps-pm",pr.manager);set("ps-pmid",pr.manager_id);
+  $("ps-id").disabled=!ps.isNew&&!!pr.id;$("ps-del").hidden=ps.isNew||!pr.id;
+  $("wf-addition").innerHTML=wfRows("addition");$("wf-rebaseline").innerHTML=wfRows("rebaseline");
+  const card=$("ps-ms-card");card.hidden=ps.isNew||!ps.setup;$("ps-rb").hidden=card.hidden||!ps.rbOpen;
+  if(card.hidden)return;
+  const all=ps.setup.milestones;const cnt=s=>all.filter(m=>(m.baseline_status||"Approved")===s).length;
+  const bno=pr.baseline_no||0;
+  $("ps-bline").innerHTML=cnt("Approved")?`Current: Baseline ${bno}`:"No approved baseline yet";
+  const rbPending=ps.setup.requests.some(r=>r.kind==="rebaseline"&&r.status.startsWith("Pending"));
+  $("ps-rb-open").disabled=!cnt("Approved")||rbPending;
+  $("ps-rb-open").textContent=ps.setup.rebaseline_draft?`Continue Baseline ${bno+1} draft`:`Rebaseline / New baseline ${bno+1}`;
+  $("ps-rb-open").title=!cnt("Approved")?"Available once the first baseline is approved":rbPending?"A rebaseline is awaiting approval":"";
+  $("ps-counts").innerHTML=[["Approved","In baseline"],["Pending","Awaiting approval"],["Draft","Draft"],["Rejected","Rejected"]].map(([k,l])=>`<span class="st st-${k}">${l}: ${cnt(k)}</span>`).join(" ");
+  const own=all.filter(m=>!(m.rebase_req&&m.baseline_status==="Draft"));
+  $("ps-ms").innerHTML=own.map((m,i)=>msRow(m,i,false)).join("")+ps.newRows.map((m,i)=>msRow(m,own.length+i,true).replace(`data-ms="new-${own.length+i}"`,`data-ms="new-${i}"`).replace(`data-rmnew="${own.length+i}"`,`data-rmnew="${i}"`)).join("")
+    ||'<tr><td colspan="9" class="empty">No milestones yet. Click "+ Add milestone row".</td></tr>';
+  $("disc-list").innerHTML=[...new Set([...(mx.rows||[]).filter(r=>r.active).map(r=>r.discipline),...cats])].map(d=>`<option value="${esc(d)}">`).join("");
+  $("ps-req").innerHTML=ps.setup.requests.length?ps.setup.requests.map(d=>`<tr><td>${d.id}</td><td>${d.kind==="addition"?"Addition into baseline":`Rebaseline${d.baseline_no!=null?" → Baseline "+d.baseline_no:""}`}</td>
+    <td>${d.items.map(i=>`<b>${esc(i.milestone_id)}</b> ${i.old_baseline?`${fmt(day(i.old_baseline),true)} → ${fmt(day(i.new_baseline),true)}`:`new · ${fmt(day(i.new_baseline),true)}`}`).join("<br>")}</td>
+    <td class="nw">${esc(d.requested_by||"")}<br><span class="note">${esc(d.created_at||"")}</span></td>
+    <td><div class="chain">${d.approvals.map(a=>`<span class="${a.status}">L${a.level} ${esc(a.approver_name||"")} · ${esc(a.status)}</span>`).join("")}</div>${d.approvals.filter(a=>a.link).map(a=>`<a href="${esc(a.link)}" target="_blank" rel="noopener">Open Level ${a.level} approval page</a>`).join("")}</td>
+    <td><span class="pill" style="color:${d.status==="Approved"?"var(--early)":d.status.startsWith("Rejected")?"var(--late)":"var(--amber)"}">${esc(d.status)}</span></td></tr>`).join("")
+    :'<tr><td colspan="6" class="empty">No approval requests yet.</td></tr>';
+  if(ps.rbOpen)renderRebaseline();
+}
+function renderRebaseline(){
+  const bno=(ps.setup.project.baseline_no||0)+1;$("ps-rb-title").textContent=`Rebaseline - Baseline ${bno}`+(ps.setup.rebaseline_draft?" (draft)":"");
+  if(!ps.rb)ps.rb={changes:{},news:[],reason:""};
+  const appr=ps.setup.milestones.filter(m=>(m.baseline_status||"Approved")==="Approved");const P=projects.find(p=>p.id===ps.pid)||{};
+  $("rb-ch").innerHTML=appr.map(m=>{const c=ps.rb.changes[m.id]||{};const d=c.nb?day(c.nb)-day(m.baseline):null;
+    return `<tr data-rb="${esc(m.id)}"><td><b>${esc(m.id)}</b></td><td>${esc(m.name)}</td><td class="num">${fmt(day(m.baseline),true)}</td>
+    <td><input type="date" data-k="nb" value="${esc(c.nb||"")}" min="${P.start!=null?iso(P.start):""}" max="${P.end!=null?iso(P.end):""}" aria-label="New baseline ${esc(m.id)}"></td>
+    <td class="num c-chg ${d>0?"mv-up":d<0?"mv-dn":""}">${d?((d>0?"+":"")+d+" d"):""}</td>
+    <td><input class="reason" data-k="reason" value="${esc(c.reason||"")}" style="min-width:220px" aria-label="Reason ${esc(m.id)}"></td></tr>`;}).join("");
+  $("rb-new").innerHTML=ps.rb.news.map((m,i)=>`<tr data-rbn="${i}"><td><input data-f="id" value="${esc(m.id)}" style="width:110px" aria-label="New milestone ID"></td>
+    <td><input data-f="name" value="${esc(m.name)}" style="min-width:180px" aria-label="New milestone name"></td><td><input data-f="category" list="disc-list" value="${esc(m.category)}" style="width:130px" aria-label="Discipline"></td>
+    <td><input data-f="baseline" type="date" value="${esc(m.baseline)}" aria-label="Baseline date"></td><td><input data-f="owner" value="${esc(m.owner)}" style="width:120px" aria-label="Owner"></td>
+    <td><select data-f="priority" aria-label="Priority">${PRIOS.map(x=>`<option value="${x}" ${x===m.priority?"selected":""}>${x||"–"}</option>`).join("")}</select></td>
+    <td><button type="button" class="ghost" data-rbdel="${i}">Remove</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">None. Click "+ Add new milestone" to add one to this baseline.</td></tr>';
+  $("rb-newreason").value=ps.rb.reason||"";
+}
+function collectNewRows(){document.querySelectorAll('#ps-ms tr[data-new]').forEach(tr=>{const i=+tr.dataset.ms.split("-")[1];const g=f=>tr.querySelector(`[data-f="${f}"]`).value;
+  ps.newRows[i]={id:g("id"),name:g("name"),category:g("category"),baseline:g("baseline"),owner:g("owner"),priority:g("priority")};});}
+function ask(title,text,yes,no,fn){$("ask-title").textContent=title;$("ask-text").innerHTML=text;$("ask-yes").textContent=yes;$("ask-no").textContent=no;ps.askFn=fn;$("ask-dlg").showModal();}
+$("ask-yes").addEventListener("click",()=>{$("ask-dlg").close();ps.askFn&&ps.askFn(true);});
+$("ask-no").addEventListener("click",()=>{$("ask-dlg").close();ps.askFn&&ps.askFn(false);});
+$("ask-cancel").addEventListener("click",()=>$("ask-dlg").close());
+function chainText(key){const lv=(ps.setup?.workflows?.[key]||[]).filter(x=>x.name);return lv.length?lv.map(x=>`Level ${x.level} <b>${esc(x.name)}</b>${x.person_id?" ("+esc(x.person_id)+")":""}`).join(" → "):null;}
+$("ps-proj").addEventListener("change",e=>{if(e.target.value==="__new")return;ps.pid=e.target.value;ps.isNew=false;ps.newRows=[];ps.rbOpen=false;loadSetup();});
+$("ps-new").addEventListener("click",()=>{ps.isNew=true;ps.newRows=[];ps.rbOpen=false;ps.setup=null;renderSetup();$("ps-id").focus();});
+$("ps-save").addEventListener("click",async()=>{
+  const wf={};["addition","rebaseline"].forEach(k=>{wf[k]=[1,2,3].map(l=>{const g=f=>document.querySelector(`[data-wf="${k}"][data-l="${l}"][data-k="${f}"]`).value;return{name:g("name"),person_id:g("person_id"),email:g("email")};});});
+  const body={id:$("ps-id").value,name:$("ps-name").value,start_date:$("ps-start").value,end_date:$("ps-end").value,controls_name:$("ps-cname").value,controls_id:$("ps-cid").value,manager:$("ps-pm").value,manager_id:$("ps-pmid").value,workflows:wf};
+  try{if(ps.isNew){const r=await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});ps.pid=r.id;ps.isNew=false;mr.proj=r.id;mr.period=null;}
+    else await api(`/api/projects/${encodeURIComponent(ps.pid)}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    $("ps-toast").innerHTML='<span class="ok-t">Project setup saved.</span>';await load();await loadSetup();}
+  catch(e){$("ps-toast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
 });
-$("ms-proj").addEventListener("change",e=>{pj.msProj=e.target.value;renderProjects();});
-$("ms-rows").addEventListener("click",async e=>{
-  const t=e.target;
-  if(t.dataset.mdel){try{await api(`/api/milestones/${encodeURIComponent(t.dataset.mdel)}`,{method:"DELETE"});$("ms-toast").innerHTML='<span class="ok-t">Milestone deleted.</span>';await load();}catch(x){$("ms-toast").innerHTML=`<span class="bad">${esc(x.message)}</span>`;}return;}
-  if(!t.dataset.msave)return;
-  const tr=t.closest("tr"),v=f=>tr.querySelector(`[data-f="${f}"]`)?.value??"";const k=t.dataset.msave,isNew=k==="__new";
-  const cur=isNew?null:msBy[k];
-  const body={project_id:pj.msProj,id:isNew?v("id"):k,name:v("name"),category:v("category"),baseline:isNew||!tr.querySelector('[data-f="baseline"]').disabled?v("baseline"):iso(cur.base),owner:v("owner"),priority:v("priority"),description:cur?.desc||""};
-  try{await api(isNew?"/api/milestones":`/api/milestones/${encodeURIComponent(k)}`,{method:isNew?"POST":"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    $("ms-toast").innerHTML=`<span class="ok-t">${isNew?"Milestone added":"Milestone saved"}: ${esc(body.id)}.</span>`;if(mr.proj===pj.msProj)mr.period=mr.period;await load();}
-  catch(x){$("ms-toast").innerHTML=`<span class="bad">${esc(x.message)}</span>`;}
+$("ps-del").addEventListener("click",async()=>{try{await api(`/api/projects/${encodeURIComponent(ps.pid)}`,{method:"DELETE"});ps.pid=null;$("ps-toast").innerHTML='<span class="ok-t">Project deleted.</span>';await load();await loadSetup();}catch(e){$("ps-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
+$("ps-addrow").addEventListener("click",()=>{collectNewRows();ps.newRows.push({id:"",name:"",category:"",baseline:"",owner:"",priority:""});renderSetup();});
+$("ps-ms").addEventListener("click",async e=>{
+  if(e.target.dataset.rmnew!=null){collectNewRows();ps.newRows.splice(+e.target.dataset.rmnew,1);renderSetup();return;}
+  if(e.target.dataset.delms){collectNewRows();try{await api(`/api/milestones/${encodeURIComponent(e.target.dataset.delms)}`,{method:"DELETE"});await load();await loadSetup();}catch(x){$("ps-mstoast").innerHTML=`<span class="bad">${esc(x.message)}</span>`;}}
 });
+function gatherMilestones(){collectNewRows();const out=[];
+  document.querySelectorAll('#ps-ms tr[data-ms]:not([data-new])').forEach(tr=>{const m=ps.setup.milestones.find(x=>x.id===tr.dataset.ms);if(!m||m.baseline_status==="Pending")return;const g=f=>tr.querySelector(`[data-f="${f}"]`).value;
+    out.push({id:m.id,name:g("name"),category:g("category"),baseline:g("baseline"),owner:g("owner"),priority:g("priority"),description:m.description||""});});
+  ps.newRows.filter(r=>r.id||r.name||r.baseline).forEach(r=>out.push(r));return out;}
+async function sendMilestones(submit){
+  const body={milestones:gatherMilestones(),submit,submitted_by:$("ps-by").value,submitter_email:$("ps-byemail").value};
+  try{const r=await api(`/api/projects/${encodeURIComponent(ps.pid)}/milestones`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    ps.newRows=[];$("ps-mstoast").innerHTML=`<span class="ok-t">${submit?`Approval workflow started (request #${r.request_id}). Level 1 has been notified; the milestones show on the dashboard baseline as awaiting approval.`:"Saved as draft. Click Save milestones again when the list is complete."}</span>`;
+    await load();await loadSetup();}
+  catch(e){$("ps-mstoast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
+}
+$("ps-savems").addEventListener("click",()=>{
+  const list=gatherMilestones();const drafts=list.filter(m=>{const ex=ps.setup.milestones.find(x=>x.id===m.id);return !ex||["Draft","Rejected"].includes(ex.baseline_status);});
+  if(!drafts.length){sendMilestones(false);return;}
+  const ch=chainText("addition");
+  ask("Are the milestones complete?",`${drafts.length} milestone(s) are not yet in the baseline.<br><br><b>Yes</b> starts the approval workflow for addition into the baseline: ${ch||'<span class="bad">no workflow set - fill "For addition of milestones into baseline" above and save the project first</span>'}.<br><b>No</b> saves them as a draft.`,
+    "Yes - start approval workflow","No - save as draft",y=>sendMilestones(y));
+});
+$("ps-rb-open").addEventListener("click",()=>{ps.rbOpen=true;renderSetup();$("ps-rb").scrollIntoView({behavior:"smooth",block:"start"});});
+$("ps-rb-close").addEventListener("click",()=>{ps.rbOpen=false;renderSetup();});
+$("rb-ch").addEventListener("change",e=>{const tr=e.target.closest("tr[data-rb]");if(!tr)return;const id=tr.dataset.rb;const c=ps.rb.changes[id]||(ps.rb.changes[id]={nb:"",reason:""});
+  c[e.target.dataset.k]=e.target.value;const m=ps.setup.milestones.find(x=>x.id===id);const d=c.nb?day(c.nb)-day(m.baseline):null;const cell=tr.querySelector(".c-chg");
+  cell.textContent=d?((d>0?"+":"")+d+" d"):"";cell.className="num c-chg "+(d>0?"mv-up":d<0?"mv-dn":"");});
+function collectRbNew(){document.querySelectorAll("#rb-new tr[data-rbn]").forEach(tr=>{const i=+tr.dataset.rbn,g=f=>tr.querySelector(`[data-f="${f}"]`).value;
+  ps.rb.news[i]={id:g("id"),name:g("name"),category:g("category"),baseline:g("baseline"),owner:g("owner"),priority:g("priority")};});ps.rb.reason=$("rb-newreason").value;}
+$("rb-addrow").addEventListener("click",()=>{collectRbNew();ps.rb.news.push({id:"",name:"",category:"",baseline:"",owner:"",priority:""});renderRebaseline();});
+$("rb-new").addEventListener("click",e=>{if(e.target.dataset.rbdel!=null){collectRbNew();ps.rb.news.splice(+e.target.dataset.rbdel,1);renderRebaseline();}});
+async function sendRebaseline(submit){
+  collectRbNew();
+  const body={changes:Object.entries(ps.rb.changes).filter(([,c])=>c.nb).map(([id,c])=>({milestone_id:id,new_baseline:c.nb,reason:c.reason||""})),
+    new_milestones:ps.rb.news.filter(m=>m.id||m.name||m.baseline),new_reason:ps.rb.reason,submit,submitted_by:$("ps-by").value,submitter_email:$("ps-byemail").value};
+  try{const r=await api(`/api/projects/${encodeURIComponent(ps.pid)}/rebaseline`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    $("rb-toast").innerHTML=`<span class="ok-t">${submit?`Baseline ${r.baseline_no} sent for approval (request #${r.request_id}). Level 1 has been notified.`:"Rebaseline saved as draft."}</span>`;
+    if(submit)ps.rbOpen=false;await load();await loadSetup();if(submit)$("ps-mstoast").innerHTML=`<span class="ok-t">Baseline ${r.baseline_no} sent for approval (request #${r.request_id}).</span>`;}
+  catch(e){$("rb-toast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
+}
+$("rb-save").addEventListener("click",()=>{collectRbNew();const n=Object.values(ps.rb.changes).filter(c=>c.nb).length,k=ps.rb.news.filter(m=>m.id||m.name).length;const ch=chainText("rebaseline");
+  ask("Is the rebaseline complete?",`${n} date change(s) and ${k} new milestone(s).<br><br><b>Yes</b> starts the rebaseline approval workflow: ${ch||'<span class="bad">no workflow set - fill "For rebaseline of milestones" above and save the project first</span>'}.<br><b>No</b> saves it as a draft.`,
+    "Yes - start approval workflow","No - save as draft",y=>sendRebaseline(y));});
+$("rb-discard").addEventListener("click",async()=>{try{await api(`/api/projects/${encodeURIComponent(ps.pid)}/rebaseline`,{method:"DELETE"});ps.rb=null;ps.rbOpen=false;await load();await loadSetup();}catch(e){$("rb-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
 // ------------------------------------------------ baseline requests list
 async function loadBaselineRequests(){blreqs=await api("/api/baseline-requests");renderBaselineRequests();}
 function renderBaselineRequests(){
   $("bl-rows").innerHTML=blreqs.length?blreqs.map(d=>`<tr><td>${d.id}</td><td>${esc(d.project_id)}<br><span class="note">${esc(d.project_name)}</span></td>
-    <td>${d.items.map(i=>`<b>${esc(i.milestone_id)}</b> ${fmt(day(i.old_baseline),true)} → <b>${fmt(day(i.new_baseline),true)}</b><br><span class="note">${esc(i.reason||"")}</span>`).join("<br>")}</td>
+    <td>${d.items.map(i=>`<b>${esc(i.milestone_id)}</b> ${i.old_baseline?`${fmt(day(i.old_baseline),true)} → <b>${fmt(day(i.new_baseline),true)}</b>`:`new · <b>${fmt(day(i.new_baseline),true)}</b>`}<br><span class="note">${esc(i.reason||"")}</span>`).join("<br>")}</td>
     <td class="nw">${esc(d.requested_by||"")}<br><span class="note">${esc(d.created_at||"")} · period ${esc(d.period||"")}</span></td>
-    <td><div class="chain">${d.approvals.map(a=>`<span class="${a.status}" title="${esc(a.approver)}">L${a.level} ${esc(a.status)}${a.decided_by?" · "+esc(a.decided_by):""}</span>`).join("")}</div>
-      <span class="note">${d.approvals.map(a=>esc(a.approver)).join(" → ")}</span>${d.approvals.filter(a=>a.link).map(a=>`<br><a href="${esc(a.link)}" target="_blank" rel="noopener">Open L${a.level} approval page</a>`).join("")}</td>
+    <td><span class="note">${d.kind==="addition"?"Addition into baseline":"Rebaseline"}</span><div class="chain">${d.approvals.map(a=>`<span class="${a.status}">L${a.level} ${esc(a.approver_name||a.approver)} · ${esc(a.status)}${a.decided_by?" · "+esc(a.decided_by):""}</span>`).join("")}</div>${d.approvals.filter(a=>a.link).map(a=>`<br><a href="${esc(a.link)}" target="_blank" rel="noopener">Open L${a.level} approval page</a>`).join("")}</td>
     <td><span class="pill" style="color:${d.status==="Approved"?"var(--early)":d.status.startsWith("Rejected")?"var(--late)":"var(--amber)"}">${esc(d.status)}</span></td></tr>`).join("")
     :'<tr><td colspan="6" class="empty">No baseline change requests yet. Raise one from Data entry → Monthly progress report.</td></tr>';
 }
@@ -764,14 +893,14 @@ async function loadOutbox(){
     <td class="nw"><span class="${r.status.startsWith("sent")?"ok-t":r.status==="failed"?"bad":"warn"}">${esc(r.status)}</span>${r.error?`<br><span class="note">${esc(r.error)}</span>`:""}</td></tr>`).join(""):`<tr><td colspan="4" class="empty">No emails yet.</td></tr>`;
 }
 // ------------------------------------------------ shell
-function renderAll(){renderFilters();const rows=analyze();renderKPIs(rows);renderChart(rows);renderInsights(rows);renderEscalations();if(mr.proj&&!mr.period)mrInit();else if(mr.proj){const keep={bc:mr.bc,appr:mr.appr,period:mr.period};mrInit();Object.assign(mr,keep);}renderMonthly();renderLog();renderProjects();}
+function renderAll(){renderFilters();const rows=analyze();renderKPIs(rows);renderChart(rows);renderInsights(rows);renderEscalations();if(mr.proj&&!mr.period)mrInit();else if(mr.proj){const keep={bc:mr.bc,appr:mr.appr,period:mr.period};mrInit();Object.assign(mr,keep);}renderMonthly();renderLog();}
 ["f-proj","f-period","f-cat","f-status"].forEach((id,i)=>$(id).addEventListener("change",e=>{st[["proj","period","cat","status"][i]]=e.target.value;renderAll();}));
 $("key").addEventListener("change",e=>{const id=e.target.dataset.id;if(!id)return;e.target.checked?st.hidden.delete(id):st.hidden.add(id);renderChart(analyze());});
 $("view-icicle").addEventListener("click",()=>{st.view="icicle";renderChart(analyze());});
 $("view-mta").addEventListener("click",()=>{st.view="mta";renderChart(analyze());});
-function route(){const v=(location.hash||"#dashboard").slice(1);const views=["dashboard","projects","escalations","matrix","rules","data","outbox"];const cur=views.includes(v)?v:"dashboard";
+function route(){const v=(location.hash||"#dashboard").slice(1);const views=["dashboard","projects","escalations","matrix","rules","data","outbox"];const cur=v==="setup"?"projects":views.includes(v)?v:"dashboard";
   views.forEach(x=>$("v-"+x).hidden=x!==cur);document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.v===cur));
-  if(cur==="rules")loadRules().catch(()=>{});if(cur==="matrix")loadMatrix().catch(()=>{});if(cur==="projects")loadMatrix().then(renderProjects).catch(()=>renderProjects());if(cur==="data"){mr.scrolled=null;renderMonthly();}if(cur==="escalations")loadBaselineRequests().catch(()=>{});if(cur==="outbox")loadOutbox().catch(()=>{});}
+  if(cur==="rules")loadRules().catch(()=>{});if(cur==="matrix")loadMatrix().catch(()=>{});if(cur==="projects")loadMatrix().catch(()=>{}).then(loadSetup);if(cur==="data"){mr.scrolled=null;renderMonthly();}if(cur==="escalations")loadBaselineRequests().catch(()=>{});if(cur==="outbox")loadOutbox().catch(()=>{});}
 window.addEventListener("hashchange",route);
 $("btn-login").addEventListener("click",()=>{$("login-err").hidden=true;$("pw").value="";$("login-dlg").showModal();});
 $("login-cancel").addEventListener("click",()=>$("login-dlg").close());

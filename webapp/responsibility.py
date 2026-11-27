@@ -96,7 +96,8 @@ def discipline_milestones(con, disc):
                             (SELECT forecast FROM observations o WHERE o.milestone_id=m.id ORDER BY rep_date DESC LIMIT 1) AS last_fc,
                             (SELECT COUNT(*) FROM observations o WHERE o.milestone_id=m.id AND o.actual IS NOT NULL) AS done
                           FROM milestones m JOIN projects p ON p.id=m.project_id
-                          WHERE m.category = ? COLLATE NOCASE ORDER BY m.project_id, m.baseline""", (disc,)).fetchall()
+                          WHERE m.category = ? COLLATE NOCASE AND COALESCE(m.baseline_status,'Approved')='Approved'
+                          ORDER BY m.project_id, m.baseline""", (disc,)).fetchall()
     return [dict(r) for r in rows if not r["done"]]
 
 

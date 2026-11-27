@@ -79,7 +79,7 @@ def d(s):
     return dt.date.fromisoformat(s) if s else None
 
 
-DATA_TABLES = ("baseline_items", "baseline_approvals", "baseline_requests", "baseline_history", "project_approvers",
+DATA_TABLES = ("baseline_items", "baseline_approvals", "baseline_requests", "baseline_history", "project_approvers", "project_workflows",
               "reminders", "outbox", "escalations", "observations", "milestones", "projects")
 DATA_VERSION = "2"   # v2: no sample data - projects and milestones are created by the user
 
@@ -99,7 +99,8 @@ def default_rules(con):
 
 def seed(con):
     for m in ("ALTER TABLE projects ADD COLUMN start_date TEXT", "ALTER TABLE projects ADD COLUMN end_date TEXT",
-              "ALTER TABLE projects ADD COLUMN manager TEXT"):
+              "ALTER TABLE projects ADD COLUMN manager TEXT", "ALTER TABLE projects ADD COLUMN controls_name TEXT",
+              "ALTER TABLE projects ADD COLUMN controls_id TEXT", "ALTER TABLE projects ADD COLUMN manager_id TEXT"):
         try:
             con.execute(m)
         except Exception:
@@ -141,7 +142,8 @@ def milestone_state(con):
     by = {}
     for o in obs:
         by.setdefault(o["milestone_id"], []).append(o)
-    for m in con.execute("SELECT m.*, p.name AS project_name FROM milestones m JOIN projects p ON p.id=m.project_id"):
+    for m in con.execute("""SELECT m.*, p.name AS project_name FROM milestones m JOIN projects p ON p.id=m.project_id
+                            WHERE COALESCE(m.baseline_status,'Approved')='Approved'"""):
         os_ = by.get(m["id"], [])
         st = dict(m=dict(m), n=len(os_))
         if os_:
@@ -329,10 +331,15 @@ async def remember_base(request: Request, call_next):
 def api_data():
     with LOCK:
         c = db()
-        P = [[r["id"], r["name"], r["freq"] or "", r["start_date"], r["end_date"], r["manager"] or ""]
+        P = [[r["id"], r["name"], r["freq"] or "", r["start_date"], r["end_date"], r["manager"] or "", r["baseline_no"] or 0,
+              r["controls_name"] or "", r["manager_id"] or "", r["controls_id"] or ""]
              for r in c.execute("SELECT * FROM projects ORDER BY id")]
         M = [[r["project_id"], r["id"], r["name"], r["category"] or "", r["baseline"], r["owner"] or "", r["priority"] or "",
-              r["description"] or ""] for r in c.execute("SELECT * FROM milestones ORDER BY project_id, baseline, id")]
+              r["description"] or "", r["baseline_status"] or "Approved", r["status_note"] or ""]
+             for r in c.execute("SELECT * FROM milestones ORDER BY project_id, baseline, id")]
+        wfs = {}
+        for r in c.execute("SELECT * FROM project_workflows ORDER BY project_id, workflow, level"):
+            wfs.setdefault(r["project_id"], {}).setdefault(r["workflow"], []).append([r["level"], r["name"], r["person_id"] or ""])
         O = [[r["milestone_id"], r["rep_date"], r["forecast"], r["actual"], r["comment"], r["id"], r["progress"]]
              for r in c.execute("SELECT * FROM observations ORDER BY id")]
         pending = [r[0] for r in c.execute("""SELECT i.milestone_id FROM baseline_items i JOIN baseline_requests q ON q.id=i.request_id
@@ -344,7 +351,7 @@ def api_data():
         for r in c.execute("SELECT * FROM baseline_history ORDER BY changed_at"):
             hist.setdefault(r["milestone_id"], []).append([r["old_baseline"], r["new_baseline"], r["changed_at"]])
         c.close()
-    return dict(P=P, M=M, O=O, pending_baseline=pending, approvers=appr, baseline_history=hist)
+    return dict(P=P, M=M, O=O, pending_baseline=pending, approvers=appr, baseline_history=hist, workflows=wfs)
 
 
 @app.get("/api/config")
@@ -495,7 +502,8 @@ async def import_msp(request: Request, files: list[UploadFile] = File(...), date
             if c.execute("SELECT 1 FROM milestones WHERE id=?", (mid,)).fetchone():
                 c.execute("UPDATE milestones SET name=?,category=?,owner=?,priority=? WHERE id=?", (name, cat, owner, prio, mid))
             else:
-                c.execute("INSERT INTO milestones VALUES(?,?,?,?,?,?,?,?)", (mid, pid, name, cat, base.isoformat(), owner, prio, desc))
+                c.execute("""INSERT INTO milestones(id,project_id,name,category,baseline,owner,priority,description,baseline_status)
+                             VALUES(?,?,?,?,?,?,?,?,'Approved')""", (mid, pid, name, cat, base.isoformat(), owner, prio, desc))
                 new_m += 1
         for (mid, rep, fc, act, cm) in obs:
             try:
@@ -656,13 +664,23 @@ def approve_post(token: str, decision: str = Form(...), name: str = Form(""), co
     return approval_html(esc, m, msg)
 
 
-# ----------------------------------------------------------------------------- projects & milestones (user maintained)
+# ----------------------------------------------------------------------------- project setup (user maintained)
+class Level(BaseModel):
+    name: str = ""
+    person_id: str = ""
+    email: str = ""
+
+
 class ProjectIn(BaseModel):
     id: str
     name: str
     start_date: str
     end_date: str
+    controls_name: str = ""
+    controls_id: str = ""
     manager: str = ""
+    manager_id: str = ""
+    workflows: dict[str, list[Level]] = {}
 
 
 def _check_project(p):
@@ -677,33 +695,51 @@ def _check_project(p):
     return sd, ed
 
 
+def _save_project(c, pid, p, sd, ed, new):
+    vals = (p.name.strip(), sd.isoformat(), ed.isoformat(), p.controls_name.strip(), p.controls_id.strip(),
+            p.manager.strip(), p.manager_id.strip())
+    if new:
+        c.execute("""INSERT INTO projects(name,start_date,end_date,controls_name,controls_id,manager,manager_id,id,freq,baseline_no)
+                     VALUES(?,?,?,?,?,?,?,?,'Monthly',0)""", vals + (pid,))
+    else:
+        c.execute("UPDATE projects SET name=?,start_date=?,end_date=?,controls_name=?,controls_id=?,manager=?,manager_id=? WHERE id=?",
+                  vals + (pid,))
+    errs = bl.save_workflows(c, pid, {k: [lv.model_dump() for lv in v] for k, v in p.workflows.items()})
+    if errs:
+        raise HTTPException(400, " | ".join(errs))
+
+
 @app.post("/api/projects")
 def create_project(p: ProjectIn, _=Depends(require_admin)):
     sd, ed = _check_project(p)
     with LOCK:
         c = db()
-        if c.execute("SELECT 1 FROM projects WHERE id=? COLLATE NOCASE", (p.id.strip(),)).fetchone():
+        try:
+            if c.execute("SELECT 1 FROM projects WHERE id=? COLLATE NOCASE", (p.id.strip(),)).fetchone():
+                raise HTTPException(400, f"Project ID {p.id.strip()} already exists.")
+            _save_project(c, p.id.strip(), p, sd, ed, True)
+            c.commit()
+        finally:
             c.close()
-            raise HTTPException(400, f"Project ID {p.id.strip()} already exists.")
-        c.execute("INSERT INTO projects(id,name,freq,start_date,end_date,manager) VALUES(?,?,?,?,?,?)",
-                  (p.id.strip(), p.name.strip(), "Monthly", sd.isoformat(), ed.isoformat(), p.manager.strip()))
-        c.commit()
-        c.close()
-    return dict(ok=True)
+    return dict(ok=True, id=p.id.strip())
 
 
 @app.put("/api/projects/{pid}")
-def update_project(pid: str, p: ProjectIn, request: Request, _=Depends(require_admin)):
+def update_project(pid: str, p: ProjectIn, _=Depends(require_admin)):
     sd, ed = _check_project(p)
     with LOCK:
         c = db()
-        if not c.execute("SELECT 1 FROM projects WHERE id=?", (pid,)).fetchone():
+        try:
+            if not c.execute("SELECT 1 FROM projects WHERE id=?", (pid,)).fetchone():
+                raise HTTPException(404, "Project not found.")
+            bad = c.execute("SELECT id FROM milestones WHERE project_id=? AND (baseline<? OR baseline>?)",
+                            (pid, sd.isoformat(), ed.isoformat())).fetchall()
+            if bad:
+                raise HTTPException(400, "These milestone baselines would fall outside the new project dates: " + ", ".join(r[0] for r in bad))
+            _save_project(c, pid, p, sd, ed, False)
+            c.commit()
+        finally:
             c.close()
-            raise HTTPException(404, "Project not found.")
-        c.execute("UPDATE projects SET name=?, start_date=?, end_date=?, manager=? WHERE id=?",
-                  (p.name.strip(), sd.isoformat(), ed.isoformat(), p.manager.strip(), pid))
-        c.commit()
-        c.close()
     return dict(ok=True)
 
 
@@ -711,19 +747,49 @@ def update_project(pid: str, p: ProjectIn, request: Request, _=Depends(require_a
 def delete_project(pid: str, _=Depends(require_admin)):
     with LOCK:
         c = db()
-        n = c.execute("SELECT COUNT(*) FROM milestones WHERE project_id=?", (pid,)).fetchone()[0]
-        if n:
+        try:
+            n = c.execute("SELECT COUNT(*) FROM milestones WHERE project_id=?", (pid,)).fetchone()[0]
+            if n:
+                raise HTTPException(400, f"Delete the project's {n} milestone(s) first.")
+            for t in ("projects", "project_approvers", "project_workflows"):
+                c.execute(f"DELETE FROM {t} WHERE {'id' if t == 'projects' else 'project_id'}=?", (pid,))
+            c.commit()
+        finally:
             c.close()
-            raise HTTPException(400, f"Delete the project's {n} milestone(s) first.")
-        c.execute("DELETE FROM projects WHERE id=?", (pid,))
-        c.execute("DELETE FROM project_approvers WHERE project_id=?", (pid,))
-        c.commit()
-        c.close()
     return dict(ok=True)
 
 
+@app.get("/api/projects/{pid}/setup")
+def project_setup(pid: str, x_admin_password: str = Header(default="")):
+    admin = is_admin(x_admin_password)
+    with LOCK:
+        c = db()
+        pr = c.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+        if not pr:
+            c.close()
+            raise HTTPException(404, "Project not found.")
+        wf = bl.get_workflows(c, pid)
+        if not admin:
+            for levels in wf.values():
+                for lv in levels:
+                    lv["email"] = ""
+        mss = [dict(r) | {"reported": bool(c.execute("SELECT 1 FROM observations WHERE milestone_id=?", (r["id"],)).fetchone())}
+               for r in c.execute("SELECT * FROM milestones WHERE project_id=? ORDER BY baseline, id", (pid,))]
+        draft = c.execute("SELECT id FROM baseline_requests WHERE project_id=? AND kind='rebaseline' AND status='Draft'", (pid,)).fetchone()
+        reqs = [bl.request_detail(c, r[0]) for r in c.execute("SELECT id FROM baseline_requests WHERE project_id=? AND status<>'Draft' ORDER BY id DESC", (pid,))]
+        rb = bl.request_detail(c, draft[0]) if draft else None
+        c.close()
+    for d in reqs:
+        for a in d["approvals"]:
+            tok = a.pop("token")
+            if admin and a["status"] == "Pending":
+                a["link"] = f"/baseline/{tok}"
+            if not admin:
+                a["approver"] = ""
+    return dict(project=dict(pr), workflows=wf, milestones=mss, rebaseline_draft=rb, requests=reqs, admin=admin)
+
+
 class MilestoneIn(BaseModel):
-    project_id: str
     id: str
     name: str
     category: str = ""
@@ -733,58 +799,80 @@ class MilestoneIn(BaseModel):
     description: str = ""
 
 
-def _check_milestone(c, m):
+def _check_ms(pr, m):
     if not m.id.strip() or not m.name.strip():
-        raise HTTPException(400, "Enter a Milestone ID and a milestone name.")
-    pr = c.execute("SELECT * FROM projects WHERE id=?", (m.project_id,)).fetchone()
-    if not pr:
-        raise HTTPException(400, "Choose a project.")
+        raise HTTPException(400, "Each milestone needs a Milestone ID and a name.")
     try:
         b = dt.date.fromisoformat(m.baseline)
     except ValueError:
         raise HTTPException(400, f"{m.id}: enter a valid baseline date.")
     if pr["start_date"] and pr["end_date"] and not (pr["start_date"] <= b.isoformat() <= pr["end_date"]):
-        raise HTTPException(400, f"{m.id}: the baseline date must fall between the project start ({fmt(pr['start_date'])}) and end ({fmt(pr['end_date'])}).")
+        raise HTTPException(400, f"{m.id}: the baseline date must fall between the project start ({fmt(pr['start_date'])}) "
+                                 f"and end ({fmt(pr['end_date'])}).")
     return b
 
 
-@app.post("/api/milestones")
-def create_milestone(m: MilestoneIn, _=Depends(require_admin)):
+class MilestoneBatch(BaseModel):
+    milestones: list[MilestoneIn] = []
+    submit: bool = False
+    submitted_by: str = ""
+    submitter_email: str = ""
+
+
+@app.post("/api/projects/{pid}/milestones")
+def save_milestones(pid: str, batch: MilestoneBatch, request: Request, _=Depends(require_admin)):
+    """Save new / edited milestones as Draft; with submit=True send every Draft milestone (not part of a
+    rebaseline draft) to the project's 'addition' approval workflow."""
     with LOCK:
         c = db()
         try:
-            b = _check_milestone(c, m)
-            if c.execute("SELECT 1 FROM milestones WHERE id=? COLLATE NOCASE", (m.id.strip(),)).fetchone():
-                raise HTTPException(400, f"Milestone ID {m.id.strip()} already exists. Each milestone needs a unique ID.")
-            c.execute("INSERT INTO milestones VALUES(?,?,?,?,?,?,?,?)", (m.id.strip(), m.project_id, m.name.strip(), m.category.strip(),
-                                                                         b.isoformat(), m.owner.strip(), m.priority.strip(), m.description.strip()))
+            pr = c.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+            if not pr:
+                raise HTTPException(404, "Project not found.")
+            seen = set()
+            for m in batch.milestones:
+                b = _check_ms(pr, m)
+                mid = m.id.strip()
+                if mid.lower() in seen:
+                    raise HTTPException(400, f"Milestone ID {mid} is listed twice.")
+                seen.add(mid.lower())
+                cur = c.execute("SELECT * FROM milestones WHERE id=? COLLATE NOCASE", (mid,)).fetchone()
+                vals = (m.name.strip(), m.category.strip(), m.owner.strip(), m.priority.strip(), m.description.strip())
+                if cur is None:
+                    c.execute("""INSERT INTO milestones(id,project_id,name,category,baseline,owner,priority,description,baseline_status,status_note)
+                                 VALUES(?,?,?,?,?,?,?,?,'Draft','Draft - not yet submitted')""",
+                              (mid, pid, vals[0], vals[1], b.isoformat(), vals[2], vals[3], vals[4]))
+                    continue
+                if cur["project_id"] != pid:
+                    raise HTTPException(400, f"Milestone ID {mid} already exists in project {cur['project_id']}. Use a unique ID.")
+                st_ = cur["baseline_status"] or "Approved"
+                if st_ == "Pending":
+                    raise HTTPException(400, f"{mid} is awaiting approval and cannot be changed now.")
+                if st_ == "Approved":
+                    if b.isoformat() != cur["baseline"]:
+                        raise HTTPException(400, f"{mid} is in the approved baseline; change its date with Rebaseline / New baseline.")
+                    c.execute("UPDATE milestones SET name=?,category=?,owner=?,priority=?,description=? WHERE id=?", vals + (mid,))
+                else:  # Draft or Rejected -> Draft
+                    c.execute("""UPDATE milestones SET name=?,category=?,owner=?,priority=?,description=?,baseline=?,
+                                 baseline_status='Draft', status_note='Draft - not yet submitted' WHERE id=?""",
+                              vals + (b.isoformat(), mid))
+            rid = None
+            if batch.submit:
+                drafts = c.execute("""SELECT * FROM milestones WHERE project_id=? AND baseline_status='Draft' AND rebase_req IS NULL
+                                      ORDER BY baseline""", (pid,)).fetchall()
+                if not drafts:
+                    raise HTTPException(400, "There are no draft milestones to submit.")
+                if not bl.chain(c, pid, "addition"):
+                    raise HTTPException(400, "Set the approval workflow 'Addition of milestones into baseline' (Level 1 at least) above, "
+                                             "save the project, then submit.")
+                if not batch.submitted_by.strip():
+                    raise HTTPException(400, "Enter your name (Submitted by) before starting the approval workflow.")
+                rid = bl.create_request(c, pid, "addition", [(r["id"], None, r["baseline"], "") for r in drafts],
+                                        batch.submitted_by.strip(), batch.submitter_email.strip(), None, now, deliver, base_url(request))
             c.commit()
         finally:
             c.close()
-    return dict(ok=True)
-
-
-@app.put("/api/milestones/{mid}")
-def update_milestone(mid: str, m: MilestoneIn, request: Request, _=Depends(require_admin)):
-    with LOCK:
-        c = db()
-        try:
-            cur = c.execute("SELECT * FROM milestones WHERE id=?", (mid,)).fetchone()
-            if not cur:
-                raise HTTPException(404, "Milestone not found.")
-            m.project_id = cur["project_id"]
-            b = _check_milestone(c, m)
-            if b.isoformat() != cur["baseline"]:
-                if c.execute("SELECT 1 FROM observations WHERE milestone_id=?", (mid,)).fetchone():
-                    raise HTTPException(400, f"{mid}: forecasts have already been reported, so the baseline can only change through "
-                                             "'If baseline to be changed' on the monthly report (L1/L2/L3 approval).")
-            c.execute("UPDATE milestones SET name=?, category=?, baseline=?, owner=?, priority=?, description=? WHERE id=?",
-                      (m.name.strip(), m.category.strip(), b.isoformat(), m.owner.strip(), m.priority.strip(), m.description.strip(), mid))
-            c.commit()
-            res = evaluate(c, base_url(request))
-        finally:
-            c.close()
-    return dict(ok=True, **res)
+    return dict(ok=True, request_id=rid)
 
 
 @app.delete("/api/milestones/{mid}")
@@ -792,14 +880,120 @@ def delete_milestone(mid: str, _=Depends(require_admin)):
     with LOCK:
         c = db()
         try:
-            n = c.execute("SELECT COUNT(*) FROM observations WHERE milestone_id=?", (mid,)).fetchone()[0]
-            if n:
-                raise HTTPException(400, f"{mid} already has {n} reported forecast(s); it cannot be deleted without losing its history.")
-            c.execute("DELETE FROM escalations WHERE milestone_id=?", (mid,))
+            m = c.execute("SELECT * FROM milestones WHERE id=?", (mid,)).fetchone()
+            if not m:
+                raise HTTPException(404, "Milestone not found.")
+            st_ = m["baseline_status"] or "Approved"
+            if st_ == "Pending":
+                raise HTTPException(400, f"{mid} is awaiting approval and cannot be deleted now.")
+            if st_ == "Approved":
+                raise HTTPException(400, f"{mid} is part of the approved baseline and cannot be deleted.")
+            c.execute("DELETE FROM baseline_items WHERE milestone_id=? AND request_id IN (SELECT id FROM baseline_requests WHERE status='Draft')", (mid,))
             c.execute("DELETE FROM milestones WHERE id=?", (mid,))
             c.commit()
         finally:
             c.close()
+    return dict(ok=True)
+
+
+class RebaseChange(BaseModel):
+    milestone_id: str
+    new_baseline: str
+    reason: str = ""
+
+
+class RebaselineIn(BaseModel):
+    changes: list[RebaseChange] = []
+    new_milestones: list[MilestoneIn] = []
+    new_reason: str = ""
+    submit: bool = False
+    submitted_by: str = ""
+    submitter_email: str = ""
+
+
+@app.put("/api/projects/{pid}/rebaseline")
+def save_rebaseline(pid: str, rb: RebaselineIn, request: Request, _=Depends(require_admin)):
+    """Create or update the project's rebaseline draft (date changes + new milestones); submit=True starts
+    the 'rebaseline' approval workflow."""
+    with LOCK:
+        c = db()
+        try:
+            pr = c.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+            if not pr:
+                raise HTTPException(404, "Project not found.")
+            approved = {r["id"]: dict(r) for r in c.execute(
+                "SELECT * FROM milestones WHERE project_id=? AND COALESCE(baseline_status,'Approved')='Approved'", (pid,))}
+            if not approved:
+                raise HTTPException(400, "The project has no approved baseline yet. Add milestones and get them approved first.")
+            pend = c.execute("""SELECT 1 FROM baseline_requests WHERE project_id=? AND kind='rebaseline' AND status LIKE 'Pending%'""",
+                             (pid,)).fetchone()
+            if pend:
+                raise HTTPException(400, "A rebaseline for this project is already awaiting approval.")
+            items = []
+            for ch in rb.changes:
+                m = approved.get(ch.milestone_id)
+                if not m or not ch.new_baseline:
+                    continue
+                nb = _check_ms(pr, MilestoneIn(id=m["id"], name=m["name"], baseline=ch.new_baseline))
+                if nb.isoformat() == m["baseline"]:
+                    continue
+                if rb.submit and not ch.reason.strip():
+                    raise HTTPException(400, f"{m['id']}: enter the reason for the baseline change.")
+                items.append((m["id"], m["baseline"], nb.isoformat(), ch.reason.strip()))
+            draft = c.execute("SELECT id FROM baseline_requests WHERE project_id=? AND kind='rebaseline' AND status='Draft'", (pid,)).fetchone()
+            rid = draft[0] if draft else bl.create_request(c, pid, "rebaseline", [], rb.submitted_by.strip(), rb.submitter_email.strip(),
+                                                           None, now, deliver, base_url(request), draft=True)
+            # new milestones belong to this rebaseline
+            keep_new = set()
+            for m in rb.new_milestones:
+                b = _check_ms(pr, m)
+                mid = m.id.strip()
+                cur = c.execute("SELECT * FROM milestones WHERE id=? COLLATE NOCASE", (mid,)).fetchone()
+                if cur and cur["rebase_req"] != rid:
+                    raise HTTPException(400, f"Milestone ID {mid} already exists. Use a unique ID.")
+                if cur:
+                    c.execute("UPDATE milestones SET name=?,category=?,baseline=?,owner=?,priority=? WHERE id=?",
+                              (m.name.strip(), m.category.strip(), b.isoformat(), m.owner.strip(), m.priority.strip(), mid))
+                else:
+                    c.execute("""INSERT INTO milestones(id,project_id,name,category,baseline,owner,priority,description,baseline_status,status_note,rebase_req)
+                                 VALUES(?,?,?,?,?,?,?,?,'Draft','Draft - part of the rebaseline',?)""",
+                              (mid, pid, m.name.strip(), m.category.strip(), b.isoformat(), m.owner.strip(), m.priority.strip(), "", rid))
+                keep_new.add(mid)
+                items.append((mid, None, b.isoformat(), rb.new_reason.strip()))
+            for r in c.execute("SELECT id FROM milestones WHERE rebase_req=? AND baseline_status='Draft'", (rid,)).fetchall():
+                if r[0] not in keep_new:
+                    c.execute("DELETE FROM milestones WHERE id=?", (r[0],))
+            c.execute("DELETE FROM baseline_items WHERE request_id=?", (rid,))
+            c.executemany("INSERT INTO baseline_items VALUES(?,?,?,?,?)", [(rid,) + i for i in items])
+            if rb.submit:
+                if not items:
+                    raise HTTPException(400, "Change at least one baseline date or add a new milestone before submitting.")
+                if not bl.chain(c, pid, "rebaseline"):
+                    raise HTTPException(400, "Set the approval workflow 'Rebaseline of milestones' (Level 1 at least) above, save the project, then submit.")
+                if not rb.submitted_by.strip():
+                    raise HTTPException(400, "Enter your name (Submitted by) before starting the approval workflow.")
+                for mid, old, new, _r in items:
+                    if old and c.execute("""SELECT 1 FROM baseline_items i JOIN baseline_requests q ON q.id=i.request_id
+                                            WHERE i.milestone_id=? AND q.status LIKE 'Pending%'""", (mid,)).fetchone():
+                        raise HTTPException(400, f"{mid} already has a baseline change awaiting approval.")
+                bl.submit_request(c, rid, rb.submitted_by.strip(), rb.submitter_email.strip(), now, deliver, base_url(request))
+            c.commit()
+        finally:
+            c.close()
+    return dict(ok=True, request_id=rid, submitted=rb.submit, baseline_no=(pr["baseline_no"] or 0) + 1)
+
+
+@app.delete("/api/projects/{pid}/rebaseline")
+def discard_rebaseline(pid: str, _=Depends(require_admin)):
+    with LOCK:
+        c = db()
+        d = c.execute("SELECT id FROM baseline_requests WHERE project_id=? AND kind='rebaseline' AND status='Draft'", (pid,)).fetchone()
+        if d:
+            c.execute("DELETE FROM milestones WHERE rebase_req=? AND baseline_status='Draft'", (d[0],))
+            c.execute("DELETE FROM baseline_items WHERE request_id=?", (d[0],))
+            c.execute("DELETE FROM baseline_requests WHERE id=?", (d[0],))
+            c.commit()
+        c.close()
     return dict(ok=True)
 
 
@@ -837,29 +1031,37 @@ def api_baseline_requests(x_admin_password: str = Header(default="")):
 
 def baseline_page(d, a, msg=""):
     e = html.escape
-    items = "".join(f"<tr><td><b>{e(i['milestone_id'])}</b> {e(i['milestone_name'] or '')}</td><td>{fmt(i['old_baseline'])}</td>"
-                    f"<td><b>{fmt(i['new_baseline'])}</b></td><td class='late'>{(d_(i['new_baseline']) - d_(i['old_baseline'])).days:+d} d</td>"
-                    f"<td>{e(i['reason'] or '')}</td></tr>" for i in d["items"])
-    chain = "".join(f"<tr><td>L{x['level']}</td><td>{e(x['approver'])}</td><td><span class='pill'>{e(x['status'])}</span></td>"
+    add = d["kind"] == "addition"
+
+    def row(i):
+        if add or i["old_baseline"] is None:
+            return (f"<tr><td><b>{e(i['milestone_id'])}</b> {e(i['milestone_name'] or '')}</td><td>New milestone</td>"
+                    f"<td><b>{fmt(i['new_baseline'])}</b></td><td></td><td>{e(i['reason'] or '')}</td></tr>")
+        return (f"<tr><td><b>{e(i['milestone_id'])}</b> {e(i['milestone_name'] or '')}</td><td>{fmt(i['old_baseline'])}</td>"
+                f"<td><b>{fmt(i['new_baseline'])}</b></td><td class='late'>{(d_(i['new_baseline']) - d_(i['old_baseline'])).days:+d} d</td>"
+                f"<td>{e(i['reason'] or '')}</td></tr>")
+    items = "".join(row(i) for i in d["items"])
+    chain = "".join(f"<tr><td>Level {x['level']}</td><td>{e(bl.who(x))}</td><td><span class='pill'>{e(x['status'])}</span></td>"
                     f"<td>{e(x['decided_by'] or '')} {e(x['decided_at'] or '')}{(' - ' + e(x['comment'])) if x['comment'] else ''}</td></tr>"
                     for x in d["approvals"])
+    title = "Milestone addition into baseline" if add else "Rebaseline of milestones"
     if a["status"] == "Pending":
-        form = f"""<form method="post"><label for="n">Your name</label><input id="n" name="name" required>
+        form = f"""<form method="post"><label for="n">Your name</label><input id="n" name="name" required value="{e(a.get('approver_name') or '')}">
         <label for="cm">Comment (required when rejecting)</label><textarea id="cm" name="comment" rows="3"></textarea>
-        <div class="b"><button class="ok" name="decision" value="Approved">Approve baseline change (L{a['level']})</button>
+        <div class="b"><button class="ok" name="decision" value="Approved">Approve (Level {a['level']})</button>
         <button class="no" name="decision" value="Rejected">Reject</button></div></form>"""
     else:
         form = f"<p><span class='pill'>Level {a['level']}: {e(a['status'])}</span></p>"
-    content = (f"<h1>Baseline change approval - level {a['level']} of {len(d['approvals'])}</h1>"
-               f"<div class='m'>{e(d['project_id'])} {e(d['project_name'])} · requested by {e(d['requested_by'] or '-')} on {e(d['created_at'] or '')}"
-               f" · reporting period {e(d['period'] or '-')} · request status: <b>{e(d['status'])}</b></div>"
+    content = (f"<h1>{title} - approval Level {a['level']} of {len(d['approvals'])}</h1>"
+               f"<div class='m'>{e(d['project_id'])} {e(d['project_name'])} · approver: <b>{e(bl.who(a))}</b> · requested by {e(d['requested_by'] or '-')}"
+               f" on {e(d['created_at'] or '')} · request status: <b>{e(d['status'])}</b></div>"
                f"{('<p><b>' + e(msg) + '</b></p>') if msg else ''}"
-               f"<h3 style='margin:16px 0 4px'>Proposed changes</h3><table><tr><td><b>Milestone</b></td><td><b>Current baseline</b></td>"
-               f"<td><b>New baseline</b></td><td><b>Change</b></td><td><b>Reason</b></td></tr>{items}</table>"
+               f"<h3 style='margin:16px 0 4px'>Milestones</h3><table><tr><td><b>Milestone</b></td><td><b>Current baseline</b></td>"
+               f"<td><b>{'Baseline' if add else 'New baseline'}</b></td><td><b>Change</b></td><td><b>Reason</b></td></tr>{items}</table>"
                f"<h3 style='margin:16px 0 4px'>Approval chain</h3><table>{chain}</table>{form}"
-               f"<p class='m'>The new baselines take effect only after every level has approved. A rejection at any level stops the request.</p>"
-               f"<p class='m'><a href='/#escalations'>Open the dashboard</a></p>")
-    return PAGE.format(content=content).replace("max-width:620px", "max-width:820px")
+               f"<p class='m'>Nothing changes until every level has approved. A rejection at any level stops the request.</p>"
+               f"<p class='m'><a href='/#setup'>Open Project Setup</a></p>")
+    return PAGE.format(content=content).replace("max-width:620px", "max-width:860px")
 
 
 def d_(s):
