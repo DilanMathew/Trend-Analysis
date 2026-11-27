@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Milestone Trend Analysis</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F2F4F8; --surface:#FFFFFF; --ink:#16233B; --muted:#5D6779; --line:#D8DEE8; --soft:#E6ECF5;
+  --accent:#1F3864; --accent-ink:#FFFFFF; --input:#FFF7D6; --input-line:#E2C35A;
+  --late:#C0392B; --early:#1E8449; --flat:#7F8C8D; --done:#1F4E79; --on:#3D7CC0; --nys:#8A939F; --amber:#C55A11;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif; --body:"IBM Plex Sans","Segoe UI",Arial,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0E1420; --surface:#161E2D; --ink:#E6EBF3; --muted:#9AA5B8; --line:#2A3448; --soft:#1E2B44;
+  --accent:#8FB0E8; --accent-ink:#0E1420; --input:#2E2A18; --input-line:#7A6A2A;
+  --late:#F07467; --early:#5CC98A; --flat:#A3AEB0; --done:#8FB0E8; --on:#6FA8E8; --nys:#8A939F; --amber:#F0A060; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 14.5px/1.5 var(--body);padding:0 max(16px,env(safe-area-inset-right)) 56px max(16px,env(safe-area-inset-left))}
+.wrap{max-width:1260px;margin:0 auto;display:grid;gap:16px}
+header{padding-top:22px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
+h1{font:800 clamp(24px,3.2vw,32px)/1.1 var(--display);margin:0;color:var(--accent)}
+h2{font:800 17px/1.25 var(--display);margin:0}
+.sub{color:var(--muted);margin:4px 0 0}
+nav{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);padding-bottom:0}
+nav a{padding:9px 14px;text-decoration:none;color:var(--muted);font-weight:600;border-bottom:3px solid transparent;margin-bottom:-1px}
+nav a.on{color:var(--accent);border-color:var(--accent)}
+nav .badge{background:var(--late);color:#fff;border-radius:99px;padding:0 7px;font-size:11.5px;margin-left:5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+button{font:500 13.5px var(--body);cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 12px}
+button:hover{border-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button.ok{background:var(--early);border-color:var(--early);color:#fff}
+button.no{background:var(--late);border-color:var(--late);color:#fff}
+button.ghost{background:transparent;color:var(--muted)}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label.f{display:grid;gap:4px;font:600 11.5px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+select,input,textarea{font:500 14px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 9px;width:100%}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--k,var(--accent));border-radius:8px;padding:10px 12px;display:grid;gap:2px;min-width:0}
+.kpi .l{font:600 10.5px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font:800 26px/1.15 var(--display);color:var(--k,var(--ink));font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12px;color:var(--muted)}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px}
+@media (max-width:980px){.main{grid-template-columns:1fr}}
+.chead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;align-items:baseline;margin-bottom:6px}
+.chead .m{font:12px var(--mono);color:var(--muted)}
+#chart{width:100%;height:auto;display:block}
+svg text{fill:var(--muted);font-family:var(--body)}
+.legendk{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin-top:4px}
+.legendk span{display:inline-flex;gap:6px;align-items:center}
+.readout{font-size:13.5px;min-height:1.5em;margin-top:6px}
+.key{display:grid;max-height:540px;overflow:auto}
+.krow{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--line);font-size:13px}
+.krow .nm{min-width:0}.krow .nm small{display:block;color:var(--muted);font-size:12px}
+.krow input{width:16px;height:16px;accent-color:var(--accent)}
+.krow.off .nm{opacity:.45}
+.sw{width:12px;height:12px;border-radius:3px}
+.mv-up{color:var(--late);font-weight:600}.mv-dn{color:var(--early);font-weight:600}.mv-eq{color:var(--flat);font-weight:600}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.bars{display:grid;gap:8px;margin-top:10px}
+.bar{display:grid;grid-template-columns:minmax(0,180px) 1fr 40px;gap:10px;align-items:center;font-size:13px}
+.bar .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .track{height:14px;background:var(--soft);border-radius:4px;overflow:hidden}
+.bar .fill{display:block;height:100%;border-radius:4px}
+.bar .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.empty,.note{color:var(--muted);font-size:13px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font:600 11px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--soft);white-space:nowrap}
+td.nw{white-space:nowrap}
+td input[type=date]{background:var(--input);border-color:var(--input-line);padding:4px 6px;font-size:13px;width:auto}
+.ok-t{color:var(--early);font-weight:600}.bad{color:var(--late);font-weight:600}.warn{color:var(--amber);font-weight:600}
+tr.new td{background:var(--soft)}
+.pill{display:inline-block;font:600 11.5px var(--body);border-radius:999px;padding:2px 9px;white-space:nowrap;border:1px solid currentColor}
+.lvl{display:inline-block;font:700 11px var(--body);border-radius:4px;padding:1px 6px;color:#fff;background:var(--amber)}
+.lvl.l2,.lvl.l3,.lvl.l4{background:var(--late)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:end}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.banner{border:1px solid var(--line);border-left:4px solid var(--amber);background:var(--surface);border-radius:8px;padding:10px 14px;font-size:13.5px}
+.banner.good{border-left-color:var(--early)}
+details summary{cursor:pointer;color:var(--accent);font-weight:500}
+pre{white-space:pre-wrap;font:12.5px/1.5 var(--mono);background:var(--soft);padding:10px;border-radius:6px;margin:6px 0 0}
+.toast{font-size:13.5px;font-weight:500}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:20px;max-width:420px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(10,15,30,.45)}
+.decide{display:grid;gap:8px;margin-top:8px;padding:10px;background:var(--soft);border-radius:8px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style></head>
+<body><div class="wrap">
+<header>
+  <div><h1>Milestone Trend Analysis</h1><p class="sub">Forecast history, delay escalation and approvals</p></div>
+  <div class="row"><span class="note" id="who"></span><button type="button" id="btn-login" class="ghost">Sign in to edit</button></div>
+</header>
+<nav aria-label="Sections">
+  <a href="#dashboard" data-v="dashboard">Dashboard</a>
+  <a href="#escalations" data-v="escalations">Escalations &amp; approvals<span class="badge" id="pend-badge" hidden></span></a>
+  <a href="#rules" data-v="rules">Escalation rules</a>
+  <a href="#data" data-v="data">Data entry</a>
+  <a href="#outbox" data-v="outbox">Email outbox</a>
+</nav>
+
+<!-- ======================= DASHBOARD -->
+<section id="v-dashboard" class="wrap">
+  <div class="card filters">
+    <label class="f">Project<select id="f-proj"></select></label>
+    <label class="f">Reporting period (as-of)<select id="f-period"></select></label>
+    <label class="f">Milestone category<select id="f-cat"></select></label>
+    <label class="f">Milestone status<select id="f-status"></select></label>
+  </div>
+  <div class="kpis" id="kpis"></div>
+  <div class="main">
+    <div class="card">
+      <div class="chead"><h2 id="chart-title">Milestone Trend Analysis</h2><span class="m">X = reporting date · Y = forecast completion date</span></div>
+      <svg id="chart" viewBox="0 0 860 460" role="img" aria-label="Milestone trend analysis chart"></svg>
+      <div class="legendk">
+        <span><svg width="26" height="10"><line x1="0" y1="5" x2="26" y2="5" stroke="currentColor" stroke-dasharray="5 4" stroke-width="1.5"/></svg>Completion line</span>
+        <span><svg width="14" height="14"><path d="M7 1 13 7 7 13 1 7Z" fill="currentColor"/></svg>Achieved</span>
+        <span><svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#E00000" stroke-width="2"/></svg>Moved ≥ 10 d in one period</span>
+      </div>
+      <div class="readout" id="readout" aria-live="polite">Hover or tap a point to read its forecast.</div>
+    </div>
+    <div class="card"><h2>Milestone key</h2><p class="note" style="margin:4px 0 8px">Untick to hide a line. <span class="lvl">L1</span> marks an open escalation.</p><div class="key" id="key"></div></div>
+  </div>
+  <div class="two">
+    <div class="card"><h2>Status breakdown</h2><div class="bars" id="statusbars"></div></div>
+    <div class="card"><h2>Top 5 most delayed open milestones</h2><div class="bars" id="top5"></div></div>
+  </div>
+</section>
+
+<!-- ======================= ESCALATIONS -->
+<section id="v-escalations" class="wrap" hidden>
+  <div class="card">
+    <div class="chead"><h2>Escalations &amp; approvals</h2><div class="row"><button type="button" id="btn-run">Run escalation check now</button></div></div>
+    <p class="note" style="margin:4px 0 12px">When an open milestone's delay against its original baseline reaches a rule's threshold, an escalation is raised and emailed to that rule's recipients with an approval link. Approvers accept the revised date or reject it and ask for a recovery plan. Escalations close on their own when the milestone completes or its delay falls back under the threshold; a higher level supersedes a lower one.</p>
+    <div class="stats" id="esc-stats"></div>
+  </div>
+  <div class="card"><div class="row" style="margin-bottom:10px"><label class="f" style="min-width:200px">Show<select id="esc-filter"><option value="Pending approval">Pending approval</option><option value="all">All escalations</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option><option value="Closed">Closed / superseded</option></select></label></div>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Milestone</th><th>Level</th><th>Delay at escalation</th><th>Delay now</th><th>Sent to</th><th>Status</th><th>Raised</th><th>Decision</th></tr></thead><tbody id="esc-rows"></tbody></table></div>
+  </div>
+</section>
+
+<!-- ======================= RULES -->
+<section id="v-rules" class="wrap" hidden>
+  <div class="card">
+    <h2>Escalation rules</h2>
+    <p class="note" style="margin:4px 0 12px">Delay = days between the current forecast (or actual date) and the original baseline. A milestone is escalated to the highest level it reaches, once per level. Separate several email addresses with commas.</p>
+    <div class="scroll"><table><thead><tr><th>Level</th><th>Name</th><th>Escalate when delay ≥ (days)</th><th>Email recipients</th><th>Active</th><th></th></tr></thead><tbody id="rule-rows"></tbody></table></div>
+    <div class="row" style="margin-top:12px"><button type="button" id="btn-addrule">Add level</button><button type="button" class="primary" id="btn-saverules">Save rules</button><span class="toast" id="rule-toast" aria-live="polite"></span></div>
+  </div>
+</section>
+
+<!-- ======================= DATA -->
+<section id="v-data" class="wrap" hidden>
+  <div class="card">
+    <h2>Record a reporting snapshot</h2>
+    <p class="note" style="margin:4px 0 0">Pick the project and reporting date, change the forecasts that moved, tick Done for achieved milestones, then post. Posting adds new history rows and runs the escalation check.</p>
+    <div class="grid3" style="margin:10px 0 12px">
+      <label class="f">Project<select id="e-proj"></select></label>
+      <label class="f">Reporting date<input type="date" id="e-date"></label>
+      <div class="note" id="e-info"></div>
+    </div>
+    <div class="scroll"><table><thead><tr><th>Milestone</th><th>Baseline</th><th>Last forecast</th><th>New forecast</th><th>Done</th><th>Move</th><th>Comment</th><th>Check</th></tr></thead><tbody id="e-rows"></tbody></table></div>
+    <div class="row" style="margin-top:12px"><button type="button" class="primary" id="e-post">Post snapshot</button><span class="toast" id="e-toast" aria-live="polite"></span></div>
+  </div>
+  <div class="card">
+    <h2>Import MS Project CSV exports</h2>
+    <p class="note" style="margin:4px 0 10px">Select one or more files named <span style="font-family:var(--mono)">&lt;ProjectID&gt;_&lt;yyyy-mm-dd&gt;.csv</span>, exported with the "MTA Export" map. Milestone tasks are imported; summary and ordinary tasks are ignored. Rows already recorded are skipped.</p>
+    <div class="grid3"><label class="f">CSV files<input type="file" id="m-files" accept=".csv" multiple></label>
+      <label class="f">Date format in the files<select id="m-culture"><option value="en-GB">Day first (30/11/26)</option><option value="en-US">Month first (11/30/26)</option></select></label>
+      <div><button type="button" class="primary" id="m-upload">Import files</button></div></div>
+    <p class="toast" id="m-toast" aria-live="polite"></p>
+  </div>
+  <div class="card">
+    <div class="chead"><h2>Forecast history (most recent rows)</h2><span class="m" id="log-count"></span></div>
+    <div class="scroll"><table><thead><tr><th>Milestone</th><th>Reporting date</th><th>Forecast</th><th>Actual</th><th>Movement</th><th>Comment</th></tr></thead><tbody id="log"></tbody></table></div>
+    <div class="row" style="margin-top:12px"><button type="button" class="ghost" id="btn-reset">Reset to sample data</button><span class="note" id="reset-toast"></span></div>
+  </div>
+</section>
+
+<!-- ======================= OUTBOX -->
+<section id="v-outbox" class="wrap" hidden>
+  <div id="mail-banner"></div>
+  <div class="card"><h2>Email outbox</h2><p class="note" style="margin:4px 0 10px">Every escalation and decision email, newest first.</p>
+    <div class="scroll"><table><thead><tr><th>When</th><th>To</th><th>Subject</th><th>Status</th></tr></thead><tbody id="mail-rows"></tbody></table></div></div>
+</section>
+</div>
+
+<dialog id="login-dlg"><form method="dialog" id="login-form"><h2>Sign in to edit</h2><p class="note">Enter the admin password to record data, change rules and approve escalations here. Approvers can also act from the link in their email without signing in.</p>
+  <label class="f" style="margin:10px 0">Admin password<input type="password" id="pw" autocomplete="current-password"></label>
+  <p class="bad" id="login-err" hidden>That password is not correct.</p>
+  <div class="row"><button type="submit" class="primary" value="ok">Sign in</button><button type="button" class="ghost" id="login-cancel">Cancel</button></div></form></dialog>
+
+<script>
+(function(){
+const DAY=864e5, MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const day=s=>s?Math.round(Date.parse(s+"T00:00:00Z")/DAY):null, iso=d=>new Date(d*DAY).toISOString().slice(0,10);
+const fmt=(d,sh)=>{if(d==null)return"–";const x=new Date(d*DAY);return String(x.getUTCDate()).padStart(2,"0")+"-"+MON[x.getUTCMonth()]+"-"+(sh?String(x.getUTCFullYear()).slice(2):x.getUTCFullYear());};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const CFG={tol:3,sig:10};
+const STATUSES=["Completed","Delayed","Ahead of Schedule","On Schedule","Not Yet Started"];
+const SCOL={"Completed":"var(--done)","Delayed":"var(--late)","Ahead of Schedule":"var(--early)","On Schedule":"var(--on)","Not Yet Started":"var(--nys)",
+  "Pending approval":"var(--amber)","Approved":"var(--early)","Rejected":"var(--late)","Closed":"var(--muted)","Superseded":"var(--muted)"};
+const PAL=["#1F77B4","#E67E22","#2CA02C","#D62728","#9467BD","#8C564B","#D35FB7","#17BECF","#A8A21E","#5A63C8","#AD494A","#6B8E23","#E7969C","#7B4173","#3182BD"];
+const $=id=>document.getElementById(id);
+let projects=[],ms=[],msBy={},cats=[],obs=[],escs=[],config={};
+const st={proj:"all",period:"latest",cat:"all",status:"all",hidden:new Set()};
+let pw="";try{pw=sessionStorage.getItem("mta-pw")||"";}catch(e){}
+
+async function api(path,opts={}){
+  opts.headers=Object.assign({"X-Admin-Password":pw},opts.headers||{});
+  const r=await fetch(path,opts);let body={};try{body=await r.json();}catch(e){}
+  if(r.status===401){pw="";try{sessionStorage.removeItem("mta-pw");}catch(e){}updateWho();throw new Error("Sign in with the admin password first.");}
+  if(!r.ok)throw new Error(body.detail||("Request failed ("+r.status+")"));
+  return body;
+}
+async function load(){
+  const [data,e,c]=await Promise.all([api("/api/data"),api("/api/escalations"),api("/api/config")]);
+  config=c;escs=e;
+  projects=data.P.map(([id,name,freq])=>({id,name,freq}));
+  ms=data.M.map(([p,id,name,cat,base,owner])=>({p,id,name,cat,base:day(base),owner}));
+  msBy=Object.fromEntries(ms.map(m=>[m.id,m]));cats=[...new Set(ms.map(m=>m.cat).filter(Boolean))];
+  obs=data.O.map(([m,r,f,a,c,id])=>({m,r:day(r),f:day(f),a:day(a),c,seq:id}));
+  if(!projects.some(p=>p.id===ef.proj))ef.proj=projects[0]?.id;
+  updateWho();renderAll();
+}
+function updateWho(){
+  const need=config.admin_required;
+  $("who").textContent=!need?"Editing open (no admin password set)":pw?"Signed in as admin":"Read-only";
+  $("btn-login").hidden=!need||!!pw;
+}
+// ------------------------------------------------ analysis (same rules as the workbook)
+function projDates(pid){return [...new Set(obs.filter(o=>!pid||msBy[o.m]?.p===pid).map(o=>o.r))].sort((a,b)=>a-b);}
+function analyze(){
+  const pd={};projects.forEach(p=>pd[p.id]=projDates(p.id));
+  return ms.map(m=>{
+    const dates=pd[m.p]||[];const asOf=st.period==="latest"?(dates[dates.length-1]||0):+st.period;
+    const o=obs.filter(x=>x.m===m.id&&x.r<=asOf).sort((a,b)=>a.r-b.r);
+    const r={m,asOf,n:o.length};
+    if(!o.length){r.status="Not Yet Started";return r;}
+    const cur=o[o.length-1],prev=o[o.length-2];
+    r.cur=cur.f;r.curRep=cur.r;r.actual=o.reduce((x,y)=>Math.max(x,y.a||0),0)||null;
+    r.var=r.cur-m.base;r.move=prev?cur.f-prev.f:null;r.tot=(r.actual||r.cur)-m.base;r.finish=r.actual||r.cur;
+    r.status=r.actual?"Completed":r.var>CFG.tol?"Delayed":r.var<-CFG.tol?"Ahead of Schedule":"On Schedule";
+    return r;
+  });
+}
+const catOk=r=>st.cat==="all"||r.m.cat===st.cat, stOk=r=>st.status==="all"||r.status===st.status;
+const inFilter=r=>(st.proj==="all"||r.m.p===st.proj)&&catOk(r)&&stOk(r);
+const openEsc=mid=>escs.find(e=>e.milestone_id===mid&&e.status==="Pending approval");
+function opt(sel,items,val){sel.innerHTML=items.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join("");sel.value=val;}
+function renderFilters(){
+  if(st.proj!=="all"&&!projects.some(p=>p.id===st.proj))st.proj="all";
+  opt($("f-proj"),[["all","All Projects"],...projects.map(p=>[p.id,`${p.name}${p.freq?" ("+p.freq.toLowerCase()+")":""}`])],st.proj);
+  const ds=projDates(st.proj==="all"?null:st.proj);
+  if(st.period!=="latest"&&!ds.includes(+st.period))st.period="latest";
+  opt($("f-period"),[["latest","(Latest)"],...ds.slice().reverse().map(d=>[String(d),fmt(d)])],String(st.period));
+  opt($("f-cat"),[["all","All Categories"],...cats.map(c=>[c,c])],st.cat);
+  opt($("f-status"),[["all","All Statuses"],...STATUSES.map(s=>[s,s])],st.status);
+}
+function renderKPIs(rows){
+  const f=rows.filter(inFilter),c=s=>f.filter(r=>r.status===s).length,n=f.length||1;
+  const started=f.filter(r=>r.n>0),avg=started.length?started.reduce((a,r)=>a+r.tot,0)/started.length:0;
+  const fin=f.filter(r=>r.finish).reduce((a,r)=>Math.max(a,r.finish),0);
+  const pend=escs.filter(e=>e.status==="Pending approval"&&f.some(r=>r.m.id===e.milestone_id)).length;
+  const K=[["Milestones",f.length,`across ${new Set(f.map(r=>r.m.p)).size} project(s)`,"var(--accent)"],
+    ["Completed",c("Completed"),`${Math.round(c("Completed")/n*100)}%`,"var(--done)"],
+    ["Delayed",c("Delayed"),`${Math.round(c("Delayed")/n*100)}%`,"var(--late)"],
+    ["Ahead",c("Ahead of Schedule"),`${Math.round(c("Ahead of Schedule")/n*100)}%`,"var(--early)"],
+    ["On schedule",c("On Schedule"),`${Math.round(c("On Schedule")/n*100)}%`,"var(--on)"],
+    ["Average delay",(avg>0?"+":"")+avg.toFixed(1)+" d",`vs baseline, ${started.length} started`,"var(--amber)"],
+    ["Awaiting approval",pend,"open escalations","var(--amber)"],
+    ["Latest forecast finish",fin?fmt(fin):"–","forecast or actual","var(--accent)"]];
+  $("kpis").innerHTML=K.map(([l,v,s,col])=>`<div class="kpi" style="--k:${col}"><span class="l">${l}</span><span class="v" style="${l.startsWith("Latest")?"font-size:19px":""}">${v}</span><span class="s">${s}</span></div>`).join("");
+}
+function renderChart(rows){
+  const svg=$("chart"),NS="http://www.w3.org/2000/svg";svg.innerHTML="";
+  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';return;}
+  const cp=st.proj==="all"?projects[0].id:st.proj,P=projects.find(p=>p.id===cp);
+  const dates=projDates(cp);const asOf=st.period==="latest"?dates[dates.length-1]:+st.period;const ds=dates.filter(d=>d<=asOf);
+  const slots=rows.filter(r=>r.m.p===cp&&catOk(r)&&stOk(r)).slice(0,15);
+  $("chart-title").textContent=`MTA · ${cp} ${P.name}`+(ds.length?` (as of ${fmt(asOf)})`:"")+(st.proj==="all"?" · first project shown":"");
+  const W=860,H=460,m={l:74,r:16,t:12,b:40};
+  const el=(n,a,p=svg)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
+  const series=slots.map((r,i)=>({r,col:PAL[i],pts:ds.map(d=>obs.find(o=>o.m===r.m.id&&o.r===d)).filter(Boolean),hidden:st.hidden.has(r.m.id)}));
+  if(!ds.length){el("text",{x:W/2,y:H/2,"text-anchor":"middle","font-size":14}).textContent="No reports recorded for this project yet.";}
+  else{
+    let ys=[ds[0],ds[ds.length-1]];series.forEach(s=>{if(!s.hidden)s.pts.forEach(p=>ys.push(p.f));});
+    const xa=ds[0]-7,xb=ds[ds.length-1]+7,ya=Math.min(...ys)-10,yb=Math.max(...ys)+10;
+    const X=d=>m.l+(d-xa)/(xb-xa)*(W-m.l-m.r),Y=d=>H-m.b-(d-ya)/(yb-ya)*(H-m.t-m.b);
+    const months=(a,b)=>{const out=[];const s=new Date(a*DAY);let d=new Date(Date.UTC(s.getUTCFullYear(),s.getUTCMonth()+1,1));while(d.getTime()/DAY<=b){out.push(Math.round(d.getTime()/DAY));d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1));}return out;};
+    const ml=d=>{const x=new Date(d*DAY);return MON[x.getUTCMonth()]+" "+String(x.getUTCFullYear()).slice(2);};
+    let yt=months(ya,yb);const ys2=Math.ceil(yt.length/9);yt=yt.filter((_,i)=>i%ys2===0);
+    yt.forEach(d=>{el("line",{x1:m.l,x2:W-m.r,y1:Y(d),y2:Y(d),stroke:"var(--line)"});el("text",{x:m.l-8,y:Y(d)+4,"text-anchor":"end","font-size":11}).textContent=ml(d);});
+    let xt=months(xa,xb);const xs2=Math.ceil(xt.length/8);xt=xt.filter((_,i)=>i%xs2===0);
+    xt.forEach(d=>{el("line",{x1:X(d),x2:X(d),y1:m.t,y2:H-m.b,stroke:"var(--line)"});el("text",{x:X(d),y:H-m.b+16,"text-anchor":"middle","font-size":11}).textContent=ml(d);});
+    ds.forEach(d=>el("line",{x1:X(d),x2:X(d),y1:H-m.b,y2:H-m.b+4,stroke:"var(--muted)"}));
+    el("text",{x:(W+m.l)/2,y:H-4,"text-anchor":"middle","font-size":11.5,"font-weight":600}).textContent="Reporting date (ticks = reports)";
+    el("text",{x:14,y:(H-m.b)/2,"text-anchor":"middle","font-size":11.5,"font-weight":600,transform:`rotate(-90 14 ${(H-m.b)/2})`}).textContent="Forecast completion date";
+    el("line",{x1:X(ds[0]),y1:Y(ds[0]),x2:X(ds[ds.length-1]),y2:Y(ds[ds.length-1]),stroke:"var(--muted)","stroke-width":1.5,"stroke-dasharray":"6 5"});
+    series.forEach(s=>{
+      if(s.hidden||!s.pts.length)return;const g=el("g",{});
+      el("polyline",{points:s.pts.map(p=>X(p.r)+","+Y(p.f)).join(" "),fill:"none",stroke:s.col,"stroke-width":2.4,"stroke-linejoin":"round"},g);
+      s.pts.forEach((p,k)=>{
+        const mv=k?p.f-s.pts[k-1].f:null,x=X(p.r),y=Y(p.f);
+        if(mv!==null&&Math.abs(mv)>=CFG.sig)el("circle",{cx:x,cy:y,r:9,fill:"none",stroke:"#E00000","stroke-width":2},g);
+        const c=p.a?el("path",{d:`M${x} ${y-7} l7 7 l-7 7 l-7 -7Z`,fill:s.col,stroke:"var(--surface)","stroke-width":1.5},g):el("circle",{cx:x,cy:y,r:4.3,fill:s.col,stroke:"var(--surface)","stroke-width":1.5},g);
+        c.setAttribute("tabindex","0");c.style.cursor="pointer";
+        const msg=`${s.r.m.id} ${s.r.m.name}: report ${fmt(p.r)} → forecast ${fmt(p.f)}`+(mv===null?" (first report)":mv>0?` (▲ ${mv} d later)`:mv<0?` (▼ ${-mv} d earlier)`:" (no change)")+(p.a?" · achieved":"")+(p.c?` · “${p.c}”`:"");
+        const show=()=>{$("readout").textContent=msg;};["mouseenter","focus","click"].forEach(e=>c.addEventListener(e,show));
+      });
+    });
+  }
+  $("key").innerHTML=series.length?series.map(s=>{const r=s.r,mv=r.move,e=openEsc(r.m.id);
+    const ind=r.n===0?'<span class="note">not started</span>':mv===null?'<span class="note">◆ first</span>':mv>0?`<span class="mv-up">▲ ${mv}d</span>`:mv<0?`<span class="mv-dn">▼ ${-mv}d</span>`:'<span class="mv-eq">● 0</span>';
+    return `<label class="krow${s.hidden?" off":""}"><span class="sw" style="background:${s.col}"></span><span class="nm"><b>${esc(r.m.id)}</b> ${esc(r.m.name)} ${e?`<span class="lvl l${e.level}">L${e.level}</span>`:""}<small>${fmt(r.finish)} · <span style="color:${SCOL[r.status]}">${r.status}</span> · ${ind}</small></span><input type="checkbox" data-id="${esc(r.m.id)}" ${s.hidden?"":"checked"} aria-label="Show ${esc(r.m.id)}"></label>`;}).join("")
+    :'<p class="empty">No milestones in this project match the filters.</p>';
+}
+function bars(elId,items,max){
+  $(elId).innerHTML=items.length?items.map(([t,n,col,extra])=>`<div class="bar"><span class="t" title="${esc(t)}">${esc(t)} ${extra||""}</span><span class="track"><span class="fill" style="width:${max?n/max*100:0}%;background:${col}"></span></span><span class="n">${n}</span></div>`).join(""):'<p class="empty">Nothing matches the current filters.</p>';
+}
+function renderInsights(rows){
+  const f=rows.filter(inFilter);
+  const sc=STATUSES.map(s=>[s,f.filter(r=>r.status===s).length,SCOL[s]]);bars("statusbars",sc,Math.max(1,...sc.map(x=>x[1])));
+  const top=f.filter(r=>r.n&&!r.actual&&r.tot>0).sort((a,b)=>b.tot-a.tot).slice(0,5).map(r=>{const e=openEsc(r.m.id);return[`${r.m.id} ${r.m.name}`,r.tot,"var(--late)",e?`<span class="lvl l${e.level}">L${e.level}</span>`:""];});
+  bars("top5",top,Math.max(1,...top.map(x=>x[1])));
+}
+// ------------------------------------------------ escalations
+function renderEscalations(){
+  const cnt=s=>escs.filter(e=>e.status===s).length;
+  const pend=cnt("Pending approval");$("pend-badge").hidden=!pend;$("pend-badge").textContent=pend;
+  $("esc-stats").innerHTML=[["Pending approval",pend],["Approved",cnt("Approved")],["Rejected",cnt("Rejected")],["Closed / superseded",cnt("Closed")+cnt("Superseded")]]
+    .map(([l,v])=>`<div class="kpi" style="--k:${SCOL[l.split(" /")[0]]||"var(--muted)"}"><span class="l">${l}</span><span class="v">${v}</span></div>`).join("");
+  const fv=$("esc-filter").value;
+  const list=escs.filter(e=>fv==="all"||e.status===fv||(fv==="Closed"&&e.status==="Superseded"));
+  $("esc-rows").innerHTML=list.length?list.map(e=>`<tr><td>${e.id}</td><td><b>${esc(e.milestone_id)}</b> ${esc(e.milestone_name)}<br><span class="note">${esc(e.project_id)} · owner ${esc(e.owner||"–")}</span></td>
+    <td><span class="lvl l${e.level}">L${e.level}</span><br><span class="note">${esc(e.rule_name)}</span></td>
+    <td class="nw bad">${e.delay_days} d</td><td class="nw">${e.current_delay??"–"} d</td><td>${esc(e.recipients)}</td>
+    <td><span class="pill" style="color:${SCOL[e.status]}">${esc(e.status)}</span></td><td class="nw">${esc(e.created_at)}</td>
+    <td>${e.status==="Pending approval"?`<div class="row"><button type="button" class="ok" data-act="Approved" data-id="${e.id}">Approve</button><button type="button" class="no" data-act="Rejected" data-id="${e.id}">Reject</button></div><div class="decide" id="dec-${e.id}" hidden></div>`
+      :`${esc(e.decision||"")}${e.decided_by?` by <b>${esc(e.decided_by)}</b>`:""}<br><span class="note">${esc(e.decided_at||"")}${e.comment?" · “"+esc(e.comment)+"”":""}</span>`}</td></tr>`).join("")
+    :`<tr><td colspan="9" class="empty">No escalations in this view.</td></tr>`;
+}
+$("esc-filter").addEventListener("change",renderEscalations);
+$("esc-rows").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-act]");if(!b)return;const id=b.dataset.id,act=b.dataset.act,box=$("dec-"+id);
+  if(b.dataset.confirm){return;}
+  box.hidden=false;box.innerHTML=`<label class="f">Your name<input id="dn-${id}"></label><label class="f">Comment${act==="Rejected"?" (required: what recovery is needed)":""}<textarea id="dc-${id}" rows="2"></textarea></label>
+    <div class="row"><button type="button" class="${act==="Approved"?"ok":"no"}" data-confirm="1" id="dg-${id}">Confirm ${act==="Approved"?"approval":"rejection"}</button><span class="toast bad" id="de-${id}"></span></div>`;
+  $("dg-"+id).addEventListener("click",async()=>{
+    try{await api(`/api/escalations/${id}/decision`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision:act,name:$("dn-"+id).value,comment:$("dc-"+id).value})});await load();}
+    catch(err){$("de-"+id).textContent=err.message;}
+  });
+});
+$("btn-run").addEventListener("click",async()=>{try{const r=await api("/api/escalations/run",{method:"POST"});await load();alertToast(`Check complete: ${r.created} raised, ${r.closed} closed.`);}catch(e){alertToast(e.message,true);}});
+function alertToast(t,bad){const n=document.createElement("div");n.className="banner"+(bad?"":" good");n.textContent=t;n.setAttribute("role","status");$("v-escalations").prepend(n);setTimeout(()=>n.remove(),6000);}
+// ------------------------------------------------ rules
+let rules=[];
+async function loadRules(){rules=await api("/api/rules");renderRules();}
+function renderRules(){
+  $("rule-rows").innerHTML=rules.map((r,i)=>`<tr><td><input type="number" min="1" value="${r.level}" data-i="${i}" data-k="level" style="width:70px" aria-label="Level"></td>
+    <td><input value="${esc(r.name)}" data-i="${i}" data-k="name" aria-label="Rule name"></td>
+    <td><input type="number" min="1" value="${r.min_delay}" data-i="${i}" data-k="min_delay" style="width:110px" aria-label="Delay threshold in days"></td>
+    <td><input value="${esc(r.recipients)}" data-i="${i}" data-k="recipients" placeholder="name@company.com, other@company.com" aria-label="Recipients"></td>
+    <td><input type="checkbox" ${r.active?"checked":""} data-i="${i}" data-k="active" style="width:18px;height:18px" aria-label="Active"></td>
+    <td><button type="button" class="ghost" data-del="${i}">Remove</button></td></tr>`).join("");
+}
+$("rule-rows").addEventListener("input",e=>{const i=e.target.dataset.i,k=e.target.dataset.k;if(i==null)return;rules[i][k]=k==="active"?e.target.checked:(k==="level"||k==="min_delay")?+e.target.value:e.target.value;});
+$("rule-rows").addEventListener("click",e=>{const i=e.target.dataset.del;if(i!=null){rules.splice(+i,1);renderRules();}});
+$("btn-addrule").addEventListener("click",()=>{const mx=Math.max(0,...rules.map(r=>r.level)),md=Math.max(0,...rules.map(r=>r.min_delay));rules.push({level:mx+1,name:`Level ${mx+1} escalation`,min_delay:md+30,recipients:"",active:true});renderRules();});
+$("btn-saverules").addEventListener("click",async()=>{try{const r=await api("/api/rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(rules.map(r=>({...r,active:!!r.active})))});$("rule-toast").innerHTML=`<span class="ok-t">Saved. ${r.created} escalation(s) raised, ${r.closed} closed.</span>`;await loadRules();await load();}catch(e){$("rule-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
+// ------------------------------------------------ data entry
+const ef={proj:null,date:null,vals:{},done:{},notes:{}};
+function nextDate(pid){const d=projDates(pid);if(!d.length)return day(new Date().toISOString().slice(0,10));if(d.length<2)return d[0]+14;const g=d.slice(1).map((x,i)=>x-d[i]).sort((a,b)=>a-b);return d[d.length-1]+g[Math.floor(g.length/2)];}
+const openMs=pid=>ms.filter(m=>m.p===pid&&!obs.some(o=>o.m===m.id&&o.a));
+const lastObs=(mid,before)=>obs.filter(o=>o.m===mid&&o.r<before).sort((a,b)=>b.r-a.r)[0];
+function checkRow(m){const v=ef.vals[m.id],d=ef.date;
+  if(!d)return["bad","Enter a reporting date"];if(obs.some(o=>o.m===m.id&&o.r===d))return["bad","✖ Already recorded"];
+  if(!v)return["warn","— no update"];if(ef.done[m.id]&&v>d)return["bad","✖ Done, but date is after report"];
+  if(!ef.done[m.id]&&v<d)return["warn","⚠ Forecast in the past"];return["ok-t","✔ Ready"];}
+function resetForm(){if(!ef.proj)return;ef.date=nextDate(ef.proj);ef.vals={};ef.done={};ef.notes={};openMs(ef.proj).forEach(m=>{const lo=lastObs(m.id,ef.date);ef.vals[m.id]=lo?lo.f:m.base;});}
+function renderForm(){
+  if(!ef.proj){$("e-rows").innerHTML="";return;}
+  if(ef.date==null)resetForm();
+  opt($("e-proj"),projects.map(p=>[p.id,p.name]),ef.proj);$("e-date").value=ef.date?iso(ef.date):"";
+  const pd=projDates(ef.proj);$("e-info").textContent=pd.length?`Last report ${fmt(pd[pd.length-1])}`:"No reports yet";
+  $("e-rows").innerHTML=openMs(ef.proj).map(m=>{const lo=lastObs(m.id,ef.date||1e9),v=ef.vals[m.id],[cls,txt]=checkRow(m),mv=v&&lo?v-lo.f:null;
+    return `<tr><td><b>${esc(m.id)}</b> ${esc(m.name)}</td><td class="nw">${fmt(m.base)}</td><td class="nw">${lo?fmt(lo.f):"–"}</td>
+    <td><input type="date" data-id="${esc(m.id)}" data-k="v" value="${v?iso(v):""}" aria-label="New forecast for ${esc(m.id)}"></td>
+    <td><input type="checkbox" data-id="${esc(m.id)}" data-k="done" ${ef.done[m.id]?"checked":""} style="width:16px;height:16px" aria-label="${esc(m.id)} achieved"></td>
+    <td class="nw">${mv===null?"":mv>0?`<span class="mv-up">+${mv} d</span>`:mv<0?`<span class="mv-dn">${mv} d</span>`:'<span class="mv-eq">0 d</span>'}</td>
+    <td><input data-id="${esc(m.id)}" data-k="note" value="${esc(ef.notes[m.id]||"")}" placeholder="Reason for change" aria-label="Comment for ${esc(m.id)}" style="min-width:160px"></td>
+    <td class="nw"><span class="${cls}">${txt}</span></td></tr>`;}).join("")||'<tr><td colspan="8" class="empty">All milestones in this project are complete.</td></tr>';
+}
+$("e-proj").addEventListener("change",e=>{ef.proj=e.target.value;resetForm();renderForm();});
+$("e-date").addEventListener("change",e=>{ef.date=e.target.value?day(e.target.value):null;renderForm();});
+$("e-rows").addEventListener("change",e=>{const id=e.target.dataset.id,k=e.target.dataset.k;if(!id)return;
+  if(k==="v")ef.vals[id]=e.target.value?day(e.target.value):null;else if(k==="done")ef.done[id]=e.target.checked;else ef.notes[id]=e.target.value;renderForm();});
+$("e-post").addEventListener("click",async()=>{
+  const rows=openMs(ef.proj).map(m=>[m,checkRow(m)]);const bad=rows.filter(([,c])=>c[0]==="bad");
+  if(bad.length){$("e-toast").innerHTML=`<span class="bad">Not posted: fix ${bad.length} row(s) marked ✖.</span>`;return;}
+  const payload={rep_date:iso(ef.date),observations:rows.filter(([m])=>ef.vals[m.id]).map(([m])=>({milestone_id:m.id,forecast:iso(ef.vals[m.id]),actual:ef.done[m.id]?iso(ef.vals[m.id]):null,comment:ef.notes[m.id]||null}))};
+  try{const r=await api("/api/snapshot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    $("e-toast").innerHTML=`<span class="ok-t">Posted ${r.added} observation(s). ${r.created} escalation(s) raised, ${r.closed} closed.</span>`+(r.errors.length?` <span class="bad">${esc(r.errors.join("; "))}</span>`:"");
+    ef.date=null;await load();}catch(e){$("e-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}
+});
+$("m-upload").addEventListener("click",async()=>{
+  const fs=$("m-files").files;if(!fs.length){$("m-toast").innerHTML='<span class="bad">Choose at least one CSV file.</span>';return;}
+  const fd=new FormData();[...fs].forEach(f=>fd.append("files",f));fd.append("date_culture",$("m-culture").value);
+  $("m-toast").textContent="Importing…";
+  try{const r=await api("/api/import/msp",{method:"POST",body:fd});
+    $("m-toast").innerHTML=`<span class="ok-t">Imported ${r.files} file(s): ${r.added} new observations, ${r.new_milestones} new milestones, ${r.new_projects} new projects (${r.skipped_existing} already recorded). ${r.created} escalation(s) raised.</span>`;await load();}
+  catch(e){$("m-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}
+});
+let resetArmed=false;
+$("btn-reset").addEventListener("click",async()=>{
+  if(!resetArmed){resetArmed=true;$("btn-reset").textContent="Click again to delete all data and reload the sample";$("reset-toast").textContent="";setTimeout(()=>{resetArmed=false;$("btn-reset").textContent="Reset to sample data";},5000);return;}
+  resetArmed=false;$("btn-reset").textContent="Reset to sample data";
+  try{await api("/api/reset",{method:"POST"});$("reset-toast").textContent="Sample data restored.";await load();}catch(e){$("reset-toast").textContent=e.message;}
+});
+function renderLog(){
+  const recent=obs.slice().sort((a,b)=>b.seq-a.seq).slice(0,15);$("log-count").textContent=`${obs.length} observations`;
+  $("log").innerHTML=recent.map(o=>{const prev=obs.filter(x=>x.m===o.m&&x.r<o.r).sort((a,b)=>b.r-a.r)[0];const mv=prev?o.f-prev.f:null;const m=msBy[o.m]||{name:""};
+    return `<tr><td><b>${esc(o.m)}</b> ${esc(m.name)}</td><td class="nw">${fmt(o.r)}</td><td class="nw">${fmt(o.f)}</td><td class="nw">${o.a?fmt(o.a):""}</td>
+    <td class="nw">${mv===null?"◆ First report":mv>0?`<span class="mv-up">▲ +${mv} d</span>`:mv<0?`<span class="mv-dn">▼ ${mv} d</span>`:'<span class="mv-eq">● No change</span>'}</td><td>${esc(o.c||"")}</td></tr>`;}).join("");
+}
+// ------------------------------------------------ outbox
+async function loadOutbox(){
+  const rows=await api("/api/outbox");const mode=config.email_mode;
+  $("mail-banner").innerHTML=mode==="dry-run"?`<div class="banner"><b>Dry-run mode:</b> emails are recorded here but not sent. To send real email, add <span style="font-family:var(--mono)">RESEND_API_KEY</span> and <span style="font-family:var(--mono)">EMAIL_FROM</span> (or SMTP settings) to the Railway service variables.</div>`
+    :`<div class="banner good"><b>Live email:</b> sending through ${mode==="resend"?"Resend":"SMTP"}.</div>`;
+  $("mail-rows").innerHTML=rows.length?rows.map(r=>`<tr><td class="nw">${esc(r.created_at)}</td><td>${esc(r.to_addr)}</td><td><details><summary>${esc(r.subject)}</summary><pre>${esc(r.body)}</pre></details></td>
+    <td class="nw"><span class="${r.status.startsWith("sent")?"ok-t":r.status==="failed"?"bad":"warn"}">${esc(r.status)}</span>${r.error?`<br><span class="note">${esc(r.error)}</span>`:""}</td></tr>`).join(""):`<tr><td colspan="4" class="empty">No emails yet.</td></tr>`;
+}
+// ------------------------------------------------ shell
+function renderAll(){renderFilters();const rows=analyze();renderKPIs(rows);renderChart(rows);renderInsights(rows);renderEscalations();renderForm();renderLog();}
+["f-proj","f-period","f-cat","f-status"].forEach((id,i)=>$(id).addEventListener("change",e=>{st[["proj","period","cat","status"][i]]=e.target.value;renderAll();}));
+$("key").addEventListener("change",e=>{const id=e.target.dataset.id;if(!id)return;e.target.checked?st.hidden.delete(id):st.hidden.add(id);renderChart(analyze());});
+function route(){const v=(location.hash||"#dashboard").slice(1);const views=["dashboard","escalations","rules","data","outbox"];const cur=views.includes(v)?v:"dashboard";
+  views.forEach(x=>$("v-"+x).hidden=x!==cur);document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.v===cur));
+  if(cur==="rules")loadRules().catch(()=>{});if(cur==="outbox")loadOutbox().catch(()=>{});}
+window.addEventListener("hashchange",route);
+$("btn-login").addEventListener("click",()=>{$("login-err").hidden=true;$("pw").value="";$("login-dlg").showModal();});
+$("login-cancel").addEventListener("click",()=>$("login-dlg").close());
+$("login-form").addEventListener("submit",async e=>{e.preventDefault();const p=$("pw").value;
+  const r=await fetch("/api/login",{method:"POST",headers:{"X-Admin-Password":p}});
+  if(r.ok){pw=p;try{sessionStorage.setItem("mta-pw",p);}catch(x){}$("login-dlg").close();updateWho();}else $("login-err").hidden=false;});
+load().then(route).catch(e=>{document.querySelector(".wrap").insertAdjacentHTML("beforeend",`<div class="banner">Could not load data: ${esc(e.message)}</div>`);});
+})();
+</script>
+</body></html>

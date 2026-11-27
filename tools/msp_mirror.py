@@ -16,6 +16,7 @@ ALIASES = {
     "resourcenames": ["resourcenames", "resources"], "priority": ["priority"],
     "category": ["text1", "category"], "notes": ["notes"],
 }
+CULTURE = "en-GB"   # set by the web app per upload
 YES = {"yes", "true", "1", "-1", "ja", "oui", "si", "sí"}
 
 
@@ -23,7 +24,8 @@ def header(h):
     return re.sub(r"[^A-Za-z0-9]", "", h).lower()
 
 
-def msp_date(v, culture="en-GB"):
+def msp_date(v, culture=None):
+    culture = culture or CULTURE
     txt = (v or "").strip()
     words = [w for w in txt.split(" ") if w]
     w0 = words[0].replace(",", "").replace(".", "").lower() if words else ""

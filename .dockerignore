@@ -1,0 +1,5 @@
+webapp/data/
+.git
+**/__pycache__
+*.xlsx
+powerquery/sample_msp_export
