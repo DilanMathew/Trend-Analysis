@@ -31,6 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tools"))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import msp_mirror  # noqa: E402
+import baseline as bl  # noqa: E402
 import responsibility as rm  # noqa: E402
 import sample_data  # noqa: E402
 
@@ -80,7 +81,8 @@ def d(s):
 
 def seed(con, reset=False):
     if reset:
-        for t in ("reminders", "outbox", "escalations", "observations", "milestones", "projects"):
+        for t in ("baseline_items", "baseline_approvals", "baseline_requests", "baseline_history",
+                  "reminders", "outbox", "escalations", "observations", "milestones", "projects"):
             con.execute(f"DELETE FROM {t}")
     if con.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
         projects, ms, obs = sample_data.build()
@@ -102,6 +104,7 @@ with LOCK:
     _c = db()
     _c.executescript(SCHEMA)
     rm.setup(_c)
+    bl.setup(_c)
     seed(_c)
     _c.close()
 
@@ -298,10 +301,18 @@ def api_data():
         P = [[r["id"], r["name"], r["freq"] or ""] for r in c.execute("SELECT * FROM projects ORDER BY id")]
         M = [[r["project_id"], r["id"], r["name"], r["category"] or "", r["baseline"], r["owner"] or ""]
              for r in c.execute("SELECT * FROM milestones ORDER BY project_id, baseline, id")]
-        O = [[r["milestone_id"], r["rep_date"], r["forecast"], r["actual"], r["comment"], r["id"]]
+        O = [[r["milestone_id"], r["rep_date"], r["forecast"], r["actual"], r["comment"], r["id"], r["progress"]]
              for r in c.execute("SELECT * FROM observations ORDER BY id")]
+        pending = [r[0] for r in c.execute("""SELECT i.milestone_id FROM baseline_items i JOIN baseline_requests q ON q.id=i.request_id
+                                              WHERE q.status LIKE 'Pending%'""")]
+        appr = {}
+        for r in c.execute("SELECT * FROM project_approvers ORDER BY project_id, level"):
+            appr.setdefault(r["project_id"], []).append(r["approver"])
+        hist = {}
+        for r in c.execute("SELECT * FROM baseline_history ORDER BY changed_at"):
+            hist.setdefault(r["milestone_id"], []).append([r["old_baseline"], r["new_baseline"], r["changed_at"]])
         c.close()
-    return dict(P=P, M=M, O=O)
+    return dict(P=P, M=M, O=O, pending_baseline=pending, approvers=appr, baseline_history=hist)
 
 
 @app.get("/api/config")
@@ -608,6 +619,102 @@ def approve_post(token: str, decision: str = Form(...), name: str = Form(""), co
     return approval_html(esc, m, msg)
 
 
+# ----------------------------------------------------------------------------- monthly report + baseline approvals
+@app.post("/api/monthly")
+async def post_monthly(request: Request, _=Depends(require_admin)):
+    payload = await request.json()
+    url = base_url(request)
+    with LOCK:
+        c = db()
+        res = bl.save_monthly(c, payload, now, deliver, url)
+        if res.get("errors"):
+            c.close()
+            raise HTTPException(400, " | ".join(res["errors"]))
+        ev = evaluate(c, url)
+        c.close()
+    return dict(**res, **ev)
+
+
+@app.get("/api/baseline-requests")
+def api_baseline_requests(x_admin_password: str = Header(default="")):
+    admin = is_admin(x_admin_password)
+    with LOCK:
+        c = db()
+        ids = [r[0] for r in c.execute("SELECT id FROM baseline_requests ORDER BY id DESC LIMIT 100")]
+        out = [bl.request_detail(c, i) for i in ids]
+        c.close()
+    for d in out:
+        for a in d["approvals"]:
+            tok = a.pop("token")
+            if admin and a["status"] == "Pending":
+                a["link"] = f"/baseline/{tok}"
+    return out
+
+
+def baseline_page(d, a, msg=""):
+    e = html.escape
+    items = "".join(f"<tr><td><b>{e(i['milestone_id'])}</b> {e(i['milestone_name'] or '')}</td><td>{fmt(i['old_baseline'])}</td>"
+                    f"<td><b>{fmt(i['new_baseline'])}</b></td><td class='late'>{(d_(i['new_baseline']) - d_(i['old_baseline'])).days:+d} d</td>"
+                    f"<td>{e(i['reason'] or '')}</td></tr>" for i in d["items"])
+    chain = "".join(f"<tr><td>L{x['level']}</td><td>{e(x['approver'])}</td><td><span class='pill'>{e(x['status'])}</span></td>"
+                    f"<td>{e(x['decided_by'] or '')} {e(x['decided_at'] or '')}{(' - ' + e(x['comment'])) if x['comment'] else ''}</td></tr>"
+                    for x in d["approvals"])
+    if a["status"] == "Pending":
+        form = f"""<form method="post"><label for="n">Your name</label><input id="n" name="name" required>
+        <label for="cm">Comment (required when rejecting)</label><textarea id="cm" name="comment" rows="3"></textarea>
+        <div class="b"><button class="ok" name="decision" value="Approved">Approve baseline change (L{a['level']})</button>
+        <button class="no" name="decision" value="Rejected">Reject</button></div></form>"""
+    else:
+        form = f"<p><span class='pill'>Level {a['level']}: {e(a['status'])}</span></p>"
+    content = (f"<h1>Baseline change approval - level {a['level']} of {len(d['approvals'])}</h1>"
+               f"<div class='m'>{e(d['project_id'])} {e(d['project_name'])} · requested by {e(d['requested_by'] or '-')} on {e(d['created_at'] or '')}"
+               f" · reporting period {e(d['period'] or '-')} · request status: <b>{e(d['status'])}</b></div>"
+               f"{('<p><b>' + e(msg) + '</b></p>') if msg else ''}"
+               f"<h3 style='margin:16px 0 4px'>Proposed changes</h3><table><tr><td><b>Milestone</b></td><td><b>Current baseline</b></td>"
+               f"<td><b>New baseline</b></td><td><b>Change</b></td><td><b>Reason</b></td></tr>{items}</table>"
+               f"<h3 style='margin:16px 0 4px'>Approval chain</h3><table>{chain}</table>{form}"
+               f"<p class='m'>The new baselines take effect only after every level has approved. A rejection at any level stops the request.</p>"
+               f"<p class='m'><a href='/#escalations'>Open the dashboard</a></p>")
+    return PAGE.format(content=content).replace("max-width:620px", "max-width:820px")
+
+
+def d_(s):
+    return dt.date.fromisoformat(s)
+
+
+@app.get("/baseline/{token}", response_class=HTMLResponse)
+def baseline_get(token: str):
+    with LOCK:
+        c = db()
+        a = c.execute("SELECT * FROM baseline_approvals WHERE token=?", (token,)).fetchone()
+        if not a:
+            c.close()
+            raise HTTPException(404, "This approval link is not valid.")
+        d = bl.request_detail(c, a["request_id"])
+        c.close()
+    return baseline_page(d, dict(a))
+
+
+@app.post("/baseline/{token}", response_class=HTMLResponse)
+def baseline_post(token: str, request: Request, decision: str = Form(...), name: str = Form(""), comment: str = Form("")):
+    url = base_url(request)
+    with LOCK:
+        c = db()
+        a = c.execute("SELECT * FROM baseline_approvals WHERE token=?", (token,)).fetchone()
+        if not a:
+            c.close()
+            raise HTTPException(404, "This approval link is not valid.")
+        try:
+            bl.decide(c, token, decision, name, comment, now, deliver, url, lambda: evaluate(c, url))
+            msg = f"Thank you - your decision ({decision.lower()}) has been recorded."
+        except ValueError as ex:
+            msg = str(ex)
+        a = c.execute("SELECT * FROM baseline_approvals WHERE token=?", (token,)).fetchone()
+        d = bl.request_detail(c, a["request_id"])
+        c.close()
+    return baseline_page(d, dict(a), msg)
+
+
 # ----------------------------------------------------------------------------- responsibility matrix
 def is_admin(pw):
     return not ADMIN_PASSWORD or secrets.compare_digest(pw or "", ADMIN_PASSWORD)
@@ -851,6 +958,6 @@ def index():
 
 @app.exception_handler(HTTPException)
 async def http_err(request: Request, exc: HTTPException):
-    if request.url.path.startswith(("/approve/", "/update/")) and request.method == "GET":
+    if request.url.path.startswith(("/approve/", "/update/", "/baseline/")) and request.method == "GET":
         return HTMLResponse(PAGE.format(content=f"<h1>Link not valid</h1><p>{html.escape(str(exc.detail))}</p>"), status_code=exc.status_code)
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)

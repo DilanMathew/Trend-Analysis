@@ -68,3 +68,12 @@ python tools/qa_msp.py /path/to/recalc.py
 - adding a milestone and a reporting period
 - duplicate detection
 - the entry form
+
+## Web app (Railway)
+
+`webapp/` is a FastAPI + SQLite web app deployed on Railway (`Dockerfile`, `railway.json`). It includes:
+
+- **Dashboard** with the **Milestone Icicle Chart**: X axis = forecast date by month, Y axis = Baseline then each reporting month. A Trend (MTA) view is also available.
+- **Monthly progress report** (Data entry), laid out like the PMO sheet: Project Name, Reporting Period, then S.No, Project Milestone, Baseline Date, Progress (Completed / In progress / Yet to start), Completed date, Reporting Month Forecast per month, Variance (days) and Reason for variance.
+- **If baseline to be changed**: the milestones, new baseline and reason, approved in sequence by L1 → L2 → L3 (more levels can be added) through emailed links. The new baseline applies only after the last level approves; a rejection at any level stops the request.
+- **Delay escalation rules**, a **responsibility matrix** (update cadence per discipline, reminders, missed-update escalation), discipline update pages with an Excel input file, and an email outbox.
