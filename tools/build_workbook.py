@@ -31,8 +31,17 @@ from openpyxl.worksheet.table import Table, TableColumn, TableFormula, TableStyl
 sys.path.insert(0, os.path.dirname(__file__))
 import sample_data  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                   "Advanced_Milestone_Trend_Analysis.xlsx")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTS = {"manual": os.path.join(ROOT, "Advanced_Milestone_Trend_Analysis.xlsx"),
+        "msp": os.path.join(ROOT, "Advanced_Milestone_Trend_Analysis_MSProject.xlsx")}
+REG_CAP = 200      # MS Project edition: milestone rows fed from the 'MSP Milestones' query
+DATA_CAP = 4000    # MS Project edition: observation rows fed from the 'MSP Observations' query
+
+
+def imp(sheet, col):
+    """Formula mirroring one column of a Power Query output sheet, row for row (query header = row 1)."""
+    src = f"'{sheet}'!${col}:${col}"
+    return f'=IF(INDEX({src},ROW()-3)="","",INDEX({src},ROW()-3))'
 
 # ----------------------------------------------------------------------------- style
 FONT = "Arial"
@@ -182,7 +191,9 @@ def tr(col, table=T):
     return f"{table}[[#This Row],[{col}]]"
 
 
-def main():
+def main(mode="manual"):
+    MSP = mode == "msp"
+    OUT = OUTS[mode]
     projects, milestones, obs = sample_data.build()
     wb = Workbook()
     ws_dash = wb.active
@@ -194,6 +205,9 @@ def main():
     ws_da = wb.create_sheet("Delay Analysis")
     ws_rpt = wb.create_sheet("Status Report")
     ws_ins = wb.create_sheet("Instructions")
+    if MSP:
+        wb.create_sheet("MSP Observations").sheet_properties.tabColor = "548235"
+        wb.create_sheet("MSP Milestones").sheet_properties.tabColor = "548235"
     ws_eng = wb.create_sheet("Engine")
 
     for ws in wb.worksheets:
@@ -256,7 +270,7 @@ def main():
 
     # reference lists
     section(ws, "B23", "Reference lists  (drive the dropdowns)", "G23")
-    lists = [("tblCategories", "Category", sample_data.CATEGORIES, "B"),
+    lists = [("tblCategories", "Category", sample_data.CATEGORIES + (["Milestone"] if MSP else []), "B"),
              ("tblPriorities", "Priority", sample_data.PRIORITIES, "D"),
              ("tblDepartments", "Department", sample_data.DEPARTMENTS, "F")]
     for tname, h, vals, col in lists:
@@ -293,19 +307,25 @@ def main():
          f'IFERROR(INDEX({T}[Status],MATCH({tr("Milestone ID","tblMilestones")}&"|"&TEXT(_xlfn.MAXIFS({REP},{MID},{tr("Milestone ID","tblMilestones")}),"0"),{KEY},0)),"Check data")))'),
     ]
     HR = 4
+    if MSP:
+        src_cols = {0: "A", 2: "B", 3: "C", 4: "D", 5: "E", 6: "F", 7: "G", 8: "H", 9: "I"}
+        reg_cols = [(h, imp("MSP Milestones", src_cols[j]) if j in src_cols else fml) for j, (h, fml) in enumerate(reg_cols)]
+        milestones_rows = [None] * REG_CAP
+    else:
+        milestones_rows = milestones
     for j, (h, fml) in enumerate(reg_cols):
         ws.cell(HR, 1 + j, h)
         hdr(ws.cell(HR, 1 + j), calc=bool(fml))
-    for i, m in enumerate(milestones):
+    for i, m in enumerate(milestones_rows):
         r = HR + 1 + i
-        vals = [m["project"], None, m["id"], m["name"], m["desc"], m["base"], m["owner"], m["dept"], m["prio"], m["cat"], None]
+        vals = [m["project"], None, m["id"], m["name"], m["desc"], m["base"], m["owner"], m["dept"], m["prio"], m["cat"], None] if m else [None] * 11
         for j, v in enumerate(vals):
             fml = reg_cols[j][1]
             c = ws.cell(r, 1 + j, fml if fml else v)
             c.font = f()
             if j == 5:
                 c.number_format = DATE
-    reg_last = HR + len(milestones)
+    reg_last = HR + len(milestones_rows)
     add_table(ws, "tblMilestones", f"A{HR}:K{reg_last}", reg_cols)
     setw(ws, {"A": 11, "B": 28, "C": 12, "D": 34, "E": 52, "F": 13, "G": 18, "H": 22, "I": 10, "J": 14, "K": 17})
     ws.freeze_panes = "E5"
@@ -327,6 +347,9 @@ def main():
         dv = DataValidation(type="list", formula1=f"{nm}", showErrorMessage=True, error="Pick a value from the list.")
         dv.add(f"{col}5:{col}{big}")
         ws.add_data_validation(dv)
+    if MSP:   # rows are formula-driven by Power Query, so typing validation does not apply
+        ws.data_validations.dataValidation = []
+        ws["B2"] = "MS Project edition: every row mirrors the 'MSP Milestones' query (Data > Refresh All). Edit milestones in MS Project, not here."
     ws.conditional_formatting.add(f"C5:C{big}", FormulaRule(formula=[f'AND(C5<>"",COUNTIF($C$5:$C${big},C5)>1)'],
                                                             fill=fill("F8D7DA"), font=Font(color=RED, bold=True)))
     status_cf(ws, f"K5:K{big}", "K5")
@@ -358,21 +381,26 @@ def main():
         ("Movement Indicator", f'=IF({tr("Milestone ID")}="","",IF({tr("Movement Days")}="","◆ First report",IF({tr("Movement Days")}>0,"▲ Later",IF({tr("Movement Days")}<0,"▼ Earlier","● No change"))))'),
         ("Abs Movement Days", f'=IF(ISNUMBER({tr("Movement Days")}),ABS({tr("Movement Days")}),0)'),
         ("Slip Flag", f'=IF(ISNUMBER({tr("Movement Days")}),IF({tr("Movement Days")}>0,1,0),0)'),
-        ("Data Check", f'=IF({tr("Milestone ID")}="","Missing Milestone ID",IF(ISNA(MATCH({tr("Milestone ID")},tblMilestones[Milestone ID],0)),"Unknown Milestone ID",'
+        ("Data Check", f'=IF({tr("Milestone ID")}="","{"" if MSP else "Missing Milestone ID"}",IF(ISNA(MATCH({tr("Milestone ID")},tblMilestones[Milestone ID],0)),"Unknown Milestone ID",'
                        f'IF(NOT(ISNUMBER({tr("Reporting Date")})),"Invalid reporting date",IF(NOT(ISNUMBER({tr("Forecast Completion Date")})),"Missing / invalid forecast",'
                        f'IF(COUNTIFS({MID},{tr("Milestone ID")},{REP},{tr("Reporting Date")})>1,"DUPLICATE observation",'
                        f'IF(AND(N({tr("Actual Completion Date")})>0,N({tr("Actual Completion Date")})>{tr("Reporting Date")}),"Actual after reporting date","OK"))))))'),
     ]
     DH = 4
+    if MSP:
+        data_cols = [(h, imp("MSP Observations", "ABCDE"[j])) if j < 5 else (h, fml) for j, (h, fml) in enumerate(data_cols)]
+        ws["B2"] = ("MS Project edition: the 5 input columns mirror the 'MSP Observations' query (Data > Refresh All). "
+                    f"Capacity {DATA_CAP:,} rows - resize the table to extend.")
+        ws["B3"] = "Each MS Project CSV export in the folder becomes one reporting snapshot. History builds up automatically as files are added."
     for j, (h, fml) in enumerate(data_cols):
         ws.cell(DH, 1 + j, h)
         hdr(ws.cell(DH, 1 + j), calc=bool(fml))
     ws.row_dimensions[DH].height = 32
     fmts = {1: DATE, 2: DATE, 3: DATE, 9: DATE, 14: DATE_HIDE0, 15: DATE, 16: DAYS}
-    obs_sorted = sorted(obs, key=lambda o: (o["rep"], o["mid"]))
+    obs_sorted = [None] * DATA_CAP if MSP else sorted(obs, key=lambda o: (o["rep"], o["mid"]))
     for i, o in enumerate(obs_sorted):
         r = DH + 1 + i
-        vals = [o["mid"], o["rep"], o["fc"], o["actual"], o["comment"]]
+        vals = [o["mid"], o["rep"], o["fc"], o["actual"], o["comment"]] if o else [data_cols[j][1] for j in range(5)]
         for j, (h, fml) in enumerate(data_cols):
             c = ws.cell(r, 1 + j, vals[j] if j < 5 else fml)
             c.font = f()
@@ -405,8 +433,10 @@ def main():
     ws.conditional_formatting.add(f"U5:U{big}", FormulaRule(formula=['AND(U5<>"",U5<>"OK")'], fill=fill("F8D7DA"), font=Font(color=RED, bold=True)))
     movement_cf(ws, f"R5:R{big}", "R5")
     status_cf(ws, f"M5:M{big}", "M5")
-    # required-field check for partially entered rows
-    ws.conditional_formatting.add(f"A5:C{big}", FormulaRule(formula=['AND(COUNTA($A5:$E5)>0,A5="")'], fill=fill("F8D7DA")))
+    if MSP:
+        ws.data_validations.dataValidation = []
+    else:  # required-field check for partially entered rows
+        ws.conditional_formatting.add(f"A5:C{big}", FormulaRule(formula=['AND(COUNTA($A5:$E5)>0,A5="")'], fill=fill("F8D7DA")))
 
     # ========================================================================= DASHBOARD (inputs first: names used by Engine/DA)
     ws = ws_dash
@@ -847,7 +877,7 @@ def main():
     # fix "across n projects" reference to Total Projects KPI (E8)
     ws["B10"] = '="across "&E8&" project(s)"'
 
-    ws["B12"] = '="Milestone Trend Analysis  -  "&engProjID&"  "&engProjName&"   (as of "&TEXT(engAsOf,"dd-mmm-yyyy")&")"'
+    ws["B12"] = '="Milestone Trend Analysis  -  "&engProjID&"  "&engProjName&"   (as of "&IF(N(engAsOf)=0,"no reports loaded yet",TEXT(engAsOf,"dd-mmm-yyyy"))&")"'
     section(ws, "B12", ws["B12"].value, "Z12")
     ws.row_dimensions[12].height = 22
 
@@ -1198,6 +1228,10 @@ def main():
     setw(ws, {"A": 4, "B": 15, "C": 30, "D": 11, "E": 11, "F": 11, "G": 12, "H": 12, "I": 26, "J": 8, "K": 28,
               "L": 6, "M": 5, "N": 2, "O": 12, "P": 12, "Q": 14, "R": 14, "S": 26})
     ws.freeze_panes = "D10"
+    if MSP:
+        ws["A7"] = ("MS Project edition: forecasts normally arrive from the MS Project CSV folder via Data > Refresh All. "
+                    "Use this form only for milestones tracked outside MS Project.")
+        ws["A7"].font = f(9, True, "C55A11")
 
     # ========================================================================= STATUS REPORT
     ws = ws_rpt
@@ -1206,7 +1240,7 @@ def main():
     ws["B1"] = "Project Schedule Status Report"
     ws["B1"].font = f(18, True, NAVY)
     ws.row_dimensions[1].height = 30
-    ws["B2"] = '="Generated from the Milestone Trend Analysis workbook  |  As of "&IF(ISNUMBER(rptAsOf),TEXT(rptAsOf,"dd-mmm-yyyy"),"-")&"  (reporting period follows the Dashboard filter)"'
+    ws["B2"] = '="Generated from the Milestone Trend Analysis workbook  |  As of "&IF(N(rptAsOf)>0,TEXT(rptAsOf,"dd-mmm-yyyy"),"-")&"  (reporting period follows the Dashboard filter)"'
     ws["B2"].font = f(9, False, MUTED, True)
     ws["B4"] = "Project"
     ws["B4"].font = f(10, True)
@@ -1354,7 +1388,7 @@ def main():
     ws.oddHeader.right.text = "&D"
 
     # ========================================================================= INSTRUCTIONS
-    build_instructions(ws_ins)
+    build_instructions(ws_ins, MSP)
 
     # ========================================================================= protection & print
     for wsx, pw in ((ws_dash, None), (ws_da, None), (ws_eng, None), (ws_rpt, None), (ws_rh, None)):
@@ -1382,6 +1416,15 @@ def movement_cf(ws, rng, first):
     ws.conditional_formatting.add(rng, FormulaRule(formula=[f'LEFT({first},1)="▼"'], font=Font(color=GREEN, bold=True)))
     ws.conditional_formatting.add(rng, FormulaRule(formula=[f'LEFT({first},1)="●"'], font=Font(color=GREYC, bold=True)))
 
+
+MSP_INSTRUCTIONS = [
+    ("h", "MS Project edition - automatic CSV import"),
+    ("p", "In this edition the Milestone Register and Milestone Data tables are filled by Power Query from a folder of MS Project CSV exports. Each export is one reporting snapshot. Set-up steps and the query code: powerquery/README.md and powerquery/MSP_Import.pq in the project repository."),
+    ("n", "1. One-time set-up: create the queries from MSP_Import.pq (Data > Get Data > From Other Sources > Blank Query > Advanced Editor) and set pMSPFolder to your export folder."),
+    ("n", "2. Load 'MSP Observations' to sheet MSP Observations, cell A1, and 'MSP Milestones' to sheet MSP Milestones, cell A1 (Close & Load To > Table > Existing worksheet). Load the other queries as Connection only."),
+    ("n", "3. Each reporting cycle: export from MS Project as <ProjectID>_<yyyy-mm-dd>.csv into the folder, open this workbook and click Data > Refresh All."),
+    ("n", "4. Project IDs in the file names must exist in tblProjects (Project Setup). Category comes from MS Project's Text1 field; add new values to tblCategories."),
+]
 
 INSTRUCTIONS = [
     ("h", "Advanced Milestone Trend Analysis - User Guide"),
@@ -1444,12 +1487,12 @@ INSTRUCTIONS = [
 ]
 
 
-def build_instructions(ws):
+def build_instructions(ws, msp=False):
     ws.sheet_view.showGridLines = False
     ws.column_dimensions["A"].width = 3
     ws.column_dimensions["B"].width = 140
     r = 1
-    for kind, text in INSTRUCTIONS:
+    for kind, text in (MSP_INSTRUCTIONS + INSTRUCTIONS if msp else INSTRUCTIONS):
         c = ws.cell(r, 2, text if kind != "b" else "•  " + text)
         if kind == "h":
             c.font = f(18, True, NAVY)
@@ -1470,4 +1513,5 @@ def build_instructions(ws):
 
 
 if __name__ == "__main__":
-    main()
+    for md in (sys.argv[1:] or ["manual", "msp"]):
+        main(md)

@@ -18,6 +18,10 @@
 
 Sample data: 3 projects with different reporting rhythms (bi-weekly, monthly, every 3 weeks), 40 milestones and 347 forecast observations. The data covers slips, pull-ins, stable forecasts, completed, early, late and not-yet-started milestones, a skipped report and a missing latest update.
 
+## MS Project edition (automatic CSV import)
+
+`Advanced_Milestone_Trend_Analysis_MSProject.xlsx` has the same dashboard, analysis and report, but its milestone and forecast tables are filled by Power Query from a folder of MS Project CSV exports. You save one file per project per reporting cycle, then click **Data → Refresh All**. The query code, setup steps and 34 sample exports are in [`powerquery/`](powerquery/README.md).
+
 ## Recording a reporting cycle (no VBA)
 
 1. **Reporting History**: pick the project and type the reporting date.
@@ -50,6 +54,10 @@ python tools/build_workbook.py
 
 ```bash
 python tools/qa_tests.py /path/to/recalc.py
+```
+
+```bash
+python tools/qa_msp.py /path/to/recalc.py
 ```
 
 `tools/qa_tests.py` recalculates scenario copies in LibreOffice and compares them with an independent Python model of the MTA rules. It covers:
