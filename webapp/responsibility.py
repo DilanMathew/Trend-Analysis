@@ -50,9 +50,6 @@ def setup(con):
             con.execute(m)
         except Exception:
             pass  # column already exists
-    if con.execute("SELECT COUNT(*) FROM disciplines").fetchone()[0] == 0:
-        con.executemany("""INSERT INTO disciplines(discipline,person,email,frequency,due_day,grace_days,l1_email,l2_email,token)
-                           VALUES(?,?,?,?,?,?,?,?,?)""", [s + (secrets.token_urlsafe(16),) for s in SEED])
     con.commit()
 
 

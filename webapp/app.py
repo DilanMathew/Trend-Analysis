@@ -79,24 +79,41 @@ def d(s):
     return dt.date.fromisoformat(s) if s else None
 
 
-def seed(con, reset=False):
-    if reset:
-        for t in ("baseline_items", "baseline_approvals", "baseline_requests", "baseline_history",
-                  "reminders", "outbox", "escalations", "observations", "milestones", "projects"):
-            con.execute(f"DELETE FROM {t}")
-    if con.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
-        projects, ms, obs = sample_data.build()
-        con.executemany("INSERT INTO projects VALUES(?,?,?)", [(p["id"], p["name"], p["freq"]) for p in projects])
-        con.executemany("INSERT INTO milestones VALUES(?,?,?,?,?,?,?,?)",
-                        [(m["id"], m["project"], m["name"], m["cat"], m["base"].isoformat(), m["owner"], m["prio"], m["desc"]) for m in ms])
-        con.executemany("INSERT INTO observations(milestone_id,rep_date,forecast,actual,comment,source,created_at) VALUES(?,?,?,?,?,?,?)",
-                        [(o["mid"], o["rep"].isoformat(), o["fc"].isoformat(), o["actual"].isoformat() if o["actual"] else None,
-                          o["comment"] or None, "sample", now()) for o in obs])
+DATA_TABLES = ("baseline_items", "baseline_approvals", "baseline_requests", "baseline_history", "project_approvers",
+              "reminders", "outbox", "escalations", "observations", "milestones", "projects")
+DATA_VERSION = "2"   # v2: no sample data - projects and milestones are created by the user
+
+
+def clear_data(con):
+    for t in DATA_TABLES:
+        con.execute(f"DELETE FROM {t}")
+
+
+def default_rules(con):
+    con.execute("DELETE FROM rules")
+    con.executemany("INSERT INTO rules(level,name,min_delay,recipients,active,route_discipline) VALUES(?,?,?,?,1,1)", [
+        (1, "Level 1 escalation (1 week late)", 7, ""),
+        (2, "Level 2 escalation (1 month late)", 30, ""),
+    ])
+
+
+def seed(con):
+    for m in ("ALTER TABLE projects ADD COLUMN start_date TEXT", "ALTER TABLE projects ADD COLUMN end_date TEXT",
+              "ALTER TABLE projects ADD COLUMN manager TEXT"):
+        try:
+            con.execute(m)
+        except Exception:
+            pass
+    con.execute("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)")
+    ver = con.execute("SELECT value FROM settings WHERE key='data_version'").fetchone()
+    if not ver or ver[0] != DATA_VERSION:
+        # one-time removal of the earlier sample data, sample responsibility matrix and placeholder rule emails
+        clear_data(con)
+        con.execute("DELETE FROM disciplines")
+        default_rules(con)
+        con.execute("INSERT OR REPLACE INTO settings VALUES('data_version', ?)", (DATA_VERSION,))
     if con.execute("SELECT COUNT(*) FROM rules").fetchone()[0] == 0:
-        con.executemany("INSERT INTO rules(level,name,min_delay,recipients,active) VALUES(?,?,?,?,1)", [
-            (1, "Project manager escalation (1 week late)", 7, "pm-escalations@example.com"),
-            (2, "Director escalation (1 month late)", 30, "director-escalations@example.com"),
-        ])
+        default_rules(con)
     con.commit()
 
 
@@ -152,6 +169,10 @@ def email_mode():
 def deliver(con, to, subject, body, esc_id=None):
     mode = email_mode()
     status, err = ("dry-run (not sent)", None)
+    if not (to or "").strip():
+        con.execute("INSERT INTO outbox(created_at,to_addr,subject,body,status,error,escalation_id) VALUES(?,?,?,?,?,?,?)",
+                    (now(), "", subject, body, "not sent", "No recipients: add emails to the escalation rule or the responsibility matrix.", esc_id))
+        return
     sender = os.environ.get("EMAIL_FROM", "MTA Escalations <onboarding@resend.dev>")
     try:
         if mode == "resend":
@@ -298,9 +319,10 @@ async def remember_base(request: Request, call_next):
 def api_data():
     with LOCK:
         c = db()
-        P = [[r["id"], r["name"], r["freq"] or ""] for r in c.execute("SELECT * FROM projects ORDER BY id")]
-        M = [[r["project_id"], r["id"], r["name"], r["category"] or "", r["baseline"], r["owner"] or ""]
-             for r in c.execute("SELECT * FROM milestones ORDER BY project_id, baseline, id")]
+        P = [[r["id"], r["name"], r["freq"] or "", r["start_date"], r["end_date"], r["manager"] or ""]
+             for r in c.execute("SELECT * FROM projects ORDER BY id")]
+        M = [[r["project_id"], r["id"], r["name"], r["category"] or "", r["baseline"], r["owner"] or "", r["priority"] or "",
+              r["description"] or ""] for r in c.execute("SELECT * FROM milestones ORDER BY project_id, baseline, id")]
         O = [[r["milestone_id"], r["rep_date"], r["forecast"], r["actual"], r["comment"], r["id"], r["progress"]]
              for r in c.execute("SELECT * FROM observations ORDER BY id")]
         pending = [r[0] for r in c.execute("""SELECT i.milestone_id FROM baseline_items i JOIN baseline_requests q ON q.id=i.request_id
@@ -370,8 +392,12 @@ def valid_emails(s):
 @app.put("/api/rules")
 def put_rules(rules: list[Rule], request: Request, _=Depends(require_admin)):
     for r in rules:
-        if r.min_delay < 1 or not r.name.strip() or not valid_emails(r.recipients):
-            raise HTTPException(400, f"Rule '{r.name}': delay must be at least 1 day and recipients must be valid email addresses, separated by commas.")
+        if r.min_delay < 1 or not r.name.strip():
+            raise HTTPException(400, f"Rule '{r.name}': give it a name and a delay of at least 1 day.")
+        if r.recipients.strip() and not valid_emails(r.recipients):
+            raise HTTPException(400, f"Rule '{r.name}': recipients must be valid email addresses, separated by commas.")
+        if not r.recipients.strip() and not r.route_discipline:
+            raise HTTPException(400, f"Rule '{r.name}': add recipients or tick 'Notify discipline contacts', otherwise nobody is told.")
     if len({r.min_delay for r in rules}) != len(rules):
         raise HTTPException(400, "Two rules have the same delay threshold.")
     with LOCK:
@@ -454,7 +480,7 @@ async def import_msp(request: Request, files: list[UploadFile] = File(...), date
         new_p = new_m = added = skipped = 0
         for (pid, mid, name, desc, base, owner, dept, prio, cat) in ms:
             if not c.execute("SELECT 1 FROM projects WHERE id=?", (pid,)).fetchone():
-                c.execute("INSERT INTO projects VALUES(?,?,?)", (pid, pid, "MS Project import"))
+                c.execute("INSERT INTO projects(id,name,freq) VALUES(?,?,?)", (pid, pid, "MS Project import"))
                 new_p += 1
             if c.execute("SELECT 1 FROM milestones WHERE id=?", (mid,)).fetchone():
                 c.execute("UPDATE milestones SET name=?,category=?,owner=?,priority=? WHERE id=?", (name, cat, owner, prio, mid))
@@ -525,7 +551,8 @@ def run_now(request: Request, _=Depends(require_admin)):
 def reset(request: Request, _=Depends(require_admin)):
     with LOCK:
         c = db()
-        seed(c, reset=True)
+        clear_data(c)
+        c.commit()
         res = evaluate(c, base_url(request))
         c.close()
     return dict(ok=True, **res)
@@ -617,6 +644,153 @@ def approve_post(token: str, decision: str = Form(...), name: str = Form(""), co
         esc, m = esc_view(c, token)
         c.close()
     return approval_html(esc, m, msg)
+
+
+# ----------------------------------------------------------------------------- projects & milestones (user maintained)
+class ProjectIn(BaseModel):
+    id: str
+    name: str
+    start_date: str
+    end_date: str
+    manager: str = ""
+
+
+def _check_project(p):
+    if not p.id.strip() or not p.name.strip():
+        raise HTTPException(400, "Enter a Project ID and a Project Name.")
+    try:
+        sd, ed = dt.date.fromisoformat(p.start_date), dt.date.fromisoformat(p.end_date)
+    except ValueError:
+        raise HTTPException(400, "Enter valid project start and end dates.")
+    if ed < sd:
+        raise HTTPException(400, "The project end date is before the start date.")
+    return sd, ed
+
+
+@app.post("/api/projects")
+def create_project(p: ProjectIn, _=Depends(require_admin)):
+    sd, ed = _check_project(p)
+    with LOCK:
+        c = db()
+        if c.execute("SELECT 1 FROM projects WHERE id=? COLLATE NOCASE", (p.id.strip(),)).fetchone():
+            c.close()
+            raise HTTPException(400, f"Project ID {p.id.strip()} already exists.")
+        c.execute("INSERT INTO projects(id,name,freq,start_date,end_date,manager) VALUES(?,?,?,?,?,?)",
+                  (p.id.strip(), p.name.strip(), "Monthly", sd.isoformat(), ed.isoformat(), p.manager.strip()))
+        c.commit()
+        c.close()
+    return dict(ok=True)
+
+
+@app.put("/api/projects/{pid}")
+def update_project(pid: str, p: ProjectIn, request: Request, _=Depends(require_admin)):
+    sd, ed = _check_project(p)
+    with LOCK:
+        c = db()
+        if not c.execute("SELECT 1 FROM projects WHERE id=?", (pid,)).fetchone():
+            c.close()
+            raise HTTPException(404, "Project not found.")
+        c.execute("UPDATE projects SET name=?, start_date=?, end_date=?, manager=? WHERE id=?",
+                  (p.name.strip(), sd.isoformat(), ed.isoformat(), p.manager.strip(), pid))
+        c.commit()
+        c.close()
+    return dict(ok=True)
+
+
+@app.delete("/api/projects/{pid}")
+def delete_project(pid: str, _=Depends(require_admin)):
+    with LOCK:
+        c = db()
+        n = c.execute("SELECT COUNT(*) FROM milestones WHERE project_id=?", (pid,)).fetchone()[0]
+        if n:
+            c.close()
+            raise HTTPException(400, f"Delete the project's {n} milestone(s) first.")
+        c.execute("DELETE FROM projects WHERE id=?", (pid,))
+        c.execute("DELETE FROM project_approvers WHERE project_id=?", (pid,))
+        c.commit()
+        c.close()
+    return dict(ok=True)
+
+
+class MilestoneIn(BaseModel):
+    project_id: str
+    id: str
+    name: str
+    category: str = ""
+    baseline: str
+    owner: str = ""
+    priority: str = ""
+    description: str = ""
+
+
+def _check_milestone(c, m):
+    if not m.id.strip() or not m.name.strip():
+        raise HTTPException(400, "Enter a Milestone ID and a milestone name.")
+    pr = c.execute("SELECT * FROM projects WHERE id=?", (m.project_id,)).fetchone()
+    if not pr:
+        raise HTTPException(400, "Choose a project.")
+    try:
+        b = dt.date.fromisoformat(m.baseline)
+    except ValueError:
+        raise HTTPException(400, f"{m.id}: enter a valid baseline date.")
+    if pr["start_date"] and pr["end_date"] and not (pr["start_date"] <= b.isoformat() <= pr["end_date"]):
+        raise HTTPException(400, f"{m.id}: the baseline date must fall between the project start ({fmt(pr['start_date'])}) and end ({fmt(pr['end_date'])}).")
+    return b
+
+
+@app.post("/api/milestones")
+def create_milestone(m: MilestoneIn, _=Depends(require_admin)):
+    with LOCK:
+        c = db()
+        try:
+            b = _check_milestone(c, m)
+            if c.execute("SELECT 1 FROM milestones WHERE id=? COLLATE NOCASE", (m.id.strip(),)).fetchone():
+                raise HTTPException(400, f"Milestone ID {m.id.strip()} already exists. Each milestone needs a unique ID.")
+            c.execute("INSERT INTO milestones VALUES(?,?,?,?,?,?,?,?)", (m.id.strip(), m.project_id, m.name.strip(), m.category.strip(),
+                                                                         b.isoformat(), m.owner.strip(), m.priority.strip(), m.description.strip()))
+            c.commit()
+        finally:
+            c.close()
+    return dict(ok=True)
+
+
+@app.put("/api/milestones/{mid}")
+def update_milestone(mid: str, m: MilestoneIn, request: Request, _=Depends(require_admin)):
+    with LOCK:
+        c = db()
+        try:
+            cur = c.execute("SELECT * FROM milestones WHERE id=?", (mid,)).fetchone()
+            if not cur:
+                raise HTTPException(404, "Milestone not found.")
+            m.project_id = cur["project_id"]
+            b = _check_milestone(c, m)
+            if b.isoformat() != cur["baseline"]:
+                if c.execute("SELECT 1 FROM observations WHERE milestone_id=?", (mid,)).fetchone():
+                    raise HTTPException(400, f"{mid}: forecasts have already been reported, so the baseline can only change through "
+                                             "'If baseline to be changed' on the monthly report (L1/L2/L3 approval).")
+            c.execute("UPDATE milestones SET name=?, category=?, baseline=?, owner=?, priority=?, description=? WHERE id=?",
+                      (m.name.strip(), m.category.strip(), b.isoformat(), m.owner.strip(), m.priority.strip(), m.description.strip(), mid))
+            c.commit()
+            res = evaluate(c, base_url(request))
+        finally:
+            c.close()
+    return dict(ok=True, **res)
+
+
+@app.delete("/api/milestones/{mid}")
+def delete_milestone(mid: str, _=Depends(require_admin)):
+    with LOCK:
+        c = db()
+        try:
+            n = c.execute("SELECT COUNT(*) FROM observations WHERE milestone_id=?", (mid,)).fetchone()[0]
+            if n:
+                raise HTTPException(400, f"{mid} already has {n} reported forecast(s); it cannot be deleted without losing its history.")
+            c.execute("DELETE FROM escalations WHERE milestone_id=?", (mid,))
+            c.execute("DELETE FROM milestones WHERE id=?", (mid,))
+            c.commit()
+        finally:
+            c.close()
+    return dict(ok=True)
 
 
 # ----------------------------------------------------------------------------- monthly report + baseline approvals

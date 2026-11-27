@@ -57,6 +57,9 @@ def save_monthly(con, payload, now, emailer, url):
         rep = period_date(payload["period"])
     except Exception:
         return dict(errors=["Choose a valid reporting period."])
+    pr = con.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+    if pr["start_date"] and pr["end_date"] and not (pr["start_date"][:7] <= payload["period"] <= pr["end_date"][:7]):
+        return dict(errors=[f"The reporting period must be between the project start ({pr['start_date'][:7]}) and end ({pr['end_date'][:7]})."])
     ms = {r["id"]: dict(r) for r in con.execute("SELECT * FROM milestones WHERE project_id=?", (pid,))}
     errors, todo = [], []
     for i, r in enumerate(payload.get("rows", []), 1):
