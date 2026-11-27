@@ -254,6 +254,16 @@ def evaluate(con, url=None):
                 closed += 1
             else:
                 con.execute("UPDATE escalations SET current_delay=? WHERE id=?", (delay, e["id"]))
+                if not (e["recipients"] or "").strip():   # contacts added after the escalation was raised
+                    recips = [x.strip() for x in rule["recipients"].split(",") if x.strip()]
+                    if rule.get("route_discipline", 1):
+                        recips += rm.contacts_for(con, st["m"]["category"], rule["level"])[0]
+                    recips = ", ".join(dict.fromkeys(recips))
+                    if recips:
+                        con.execute("UPDATE escalations SET recipients=? WHERE id=?", (recips, e["id"]))
+                        subj, body = escalation_email(dict(level=rule["level"], rule_name=rule["name"], token=e["token"],
+                                                           threshold=rule["min_delay"]), st, url)
+                        deliver(con, recips, subj, body, e["id"])
         hit = next((r for r in rules if delay >= r["min_delay"]), None)  # highest threshold reached
         if not hit:
             continue
@@ -992,13 +1002,12 @@ def save_updates(c, r, items, source):
         if it.get("actual") and it["actual"] > rep_:
             errors.append(f"{tag}{mid}: actual date is after the reporting date")
             continue
-        try:
-            c.execute("INSERT INTO observations(milestone_id,rep_date,forecast,actual,comment,source,created_at) VALUES(?,?,?,?,?,?,?)",
-                      (mid, rep_.isoformat(), it["forecast"].isoformat(), it["actual"].isoformat() if it.get("actual") else None,
-                       it.get("comment") or None, f"{source} ({r['person']})", now()))
-            added += 1
-        except sqlite3.IntegrityError:
-            errors.append(f"{tag}{mid}: already recorded for {rep_:%d-%b-%Y}")
+        c.execute("""INSERT INTO observations(milestone_id,rep_date,forecast,actual,comment,source,created_at,progress) VALUES(?,?,?,?,?,?,?,?)
+                     ON CONFLICT(milestone_id,rep_date) DO UPDATE SET forecast=excluded.forecast, actual=excluded.actual,
+                       comment=excluded.comment, source=excluded.source, created_at=excluded.created_at, progress=excluded.progress""",
+                  (mid, rep_.isoformat(), it["forecast"].isoformat(), it["actual"].isoformat() if it.get("actual") else None,
+                   it.get("comment") or None, f"{source} ({r['person']})", now(), "Completed" if it.get("actual") else "In progress"))
+        added += 1
     c.commit()
     return added, errors
 
@@ -1013,6 +1022,17 @@ button,.btn{font:600 14px 'Segoe UI',Arial,sans-serif;padding:9px 16px;border-ra
 .pill{display:inline-block;padding:2px 10px;border-radius:99px;font-weight:600;font-size:12.5px;color:#fff}
 .Overdue{background:#C0392B}.Due{background:#C55A11}.Up{background:#1E8449}.No{background:#8A939F}
 .msg{padding:10px 14px;border-radius:8px;background:#E2F0D9}.err{background:#F8D7DA}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}</style>"""
+
+
+def period_opts():
+    t = rm.today()
+    ks = []
+    y, m = t.year, t.month
+    for _ in range(13):
+        ks.append(f"{y}-{m:02d}")
+        y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+    return "".join(f"<option value='{k}'{' selected' if i == 0 else ''}>{dt.date(int(k[:4]), int(k[5:]), 1):%b-%Y} "
+                   f"(report date {bl.period_date(k):%d-%b-%y})</option>" for i, k in enumerate(ks))
 
 
 def portal_html(c, r, msg="", errors=()):
@@ -1040,7 +1060,8 @@ Next due: {fmt(comp['next_due'])}</p>
 {msg_html}
 <form class="card" method="post"><h2>Update dates online</h2>
 <p class="m">Each submitted row adds a new forecast observation; earlier forecasts are kept. Leave a forecast unchanged if the date has not moved, but do submit it, so the update counts.</p>
-<div class="row" style="margin:8px 0 12px"><label>Reporting (status) date <input type="date" name="rep_date" value="{rm.today().isoformat()}" required></label></div>
+<div class="row" style="margin:8px 0 12px"><label>Reporting period <select name="period" required>{period_opts()}</select></label>
+<span class="m">Report date is the 30th of the month (last day for shorter months). Submitting again in the same month corrects that month.</span></div>
 <table><thead><tr><th>Project</th><th>Milestone</th><th>Baseline</th><th>Last reported</th><th>Last forecast</th><th>New forecast</th><th>Achieved</th><th>Comment</th></tr></thead>
 <tbody>{rows or '<tr><td colspan=8>No open milestones for this discipline.</td></tr>'}</tbody></table>
 <p style="margin-top:14px"><button type="submit">Submit update</button></p></form>
@@ -1069,8 +1090,8 @@ async def portal_post(token: str, request: Request):
         r = portal_row(c, token)
         items, errors = [], []
         try:
-            rep_ = dt.date.fromisoformat(form.get("rep_date", ""))
-        except ValueError:
+            rep_ = bl.period_date(form.get("period", ""))
+        except Exception:
             rep_ = None
         for m in rm.discipline_milestones(c, r["discipline"]):
             v = form.get(f"fc_{m['id']}")

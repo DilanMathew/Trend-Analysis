@@ -90,7 +90,8 @@ def save_monthly(con, payload, now, emailer, url):
             errors.append(f"{mid}: a completed date needs progress 'Completed'")
             continue
         if not fc:
-            continue  # nothing reported for this milestone
+            errors.append(f"{mid}: enter this month's forecast date (keep last month's date if it has not moved)")
+            continue
         prev = con.execute("SELECT forecast FROM observations WHERE milestone_id=? AND rep_date<? ORDER BY rep_date DESC LIMIT 1",
                            (mid, rep.isoformat())).fetchone()
         reason = (r.get("reason") or "").strip()

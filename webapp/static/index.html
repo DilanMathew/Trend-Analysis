@@ -14,6 +14,7 @@
   --accent:#8FB0E8; --accent-ink:#0E1420; --input:#2E2A18; --input-line:#7A6A2A;
   --late:#F07467; --early:#5CC98A; --flat:#A3AEB0; --done:#8FB0E8; --on:#6FA8E8; --nys:#8A939F; --amber:#F0A060; color-scheme:dark}}
 *{box-sizing:border-box}
+section.wrap{margin:0;max-width:none;width:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 14.5px/1.5 var(--body);padding:0 max(16px,env(safe-area-inset-right)) 56px max(16px,env(safe-area-inset-left))}
 .wrap{max-width:1260px;margin:0 auto;display:grid;gap:16px}
 header{padding-top:22px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
@@ -35,7 +36,7 @@ button.ghost{background:transparent;color:var(--muted)}
 .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 label.f{display:grid;gap:4px;font:600 11.5px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 select,input,textarea{font:500 14px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 9px;width:100%}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:10px}
 .kpi{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--k,var(--accent));border-radius:8px;padding:10px 12px;display:grid;gap:2px;min-width:0}
 .kpi .l{font:600 10.5px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .kpi .v{font:800 26px/1.15 var(--display);color:var(--k,var(--ink));font-variant-numeric:tabular-nums}
@@ -103,7 +104,8 @@ table.sheet select,table.sheet input{padding:4px 6px;font-size:13px;width:auto}
 table.sheet input[type=date],table.sheet input.reason,table.sheet select{background:var(--input);border-color:var(--input-line)}
 table.sheet input:disabled,table.sheet select:disabled{opacity:.55;background:transparent}
 table.sheet input.need{border-color:var(--late);box-shadow:0 0 0 1px var(--late)}
-#mr-table td:nth-child(2),#mr-table th:nth-child(2){position:sticky;left:0;z-index:1;background:var(--surface);box-shadow:1px 0 0 var(--line)}
+#mr-table td:nth-child(1),#mr-table th:nth-child(1){position:sticky;left:0;z-index:2;background:var(--surface);width:44px;min-width:44px;max-width:44px}
+#mr-table td:nth-child(2),#mr-table th:nth-child(2){position:sticky;left:44px;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--line)}
 .hdrgrid{display:grid;grid-template-columns:160px minmax(0,320px);gap:6px 12px;align-items:center;margin:12px 0}
 .hdrgrid label{font-weight:600}
 .bcbox{border-top:1px solid var(--line);margin-top:18px;padding-top:14px;display:grid;gap:10px}
@@ -290,7 +292,7 @@ let pw="";try{pw=sessionStorage.getItem("mta-pw")||"";}catch(e){}
 async function api(path,opts={}){
   opts.headers=Object.assign({"X-Admin-Password":pw},opts.headers||{});
   const r=await fetch(path,opts);let body={};try{body=await r.json();}catch(e){}
-  if(r.status===401){pw="";try{sessionStorage.removeItem("mta-pw");}catch(e){}updateWho();throw new Error("Sign in with the admin password first.");}
+  if(r.status===401){pw="";try{sessionStorage.removeItem("mta-pw");}catch(e){}updateWho();$("login-err").hidden=true;$("pw").value="";if(!$("login-dlg").open)$("login-dlg").showModal();throw new Error("Sign in with the admin password, then click the button again.");}
   if(!r.ok)throw new Error(body.detail||("Request failed ("+r.status+")"));
   return body;
 }
@@ -317,7 +319,7 @@ function projDates(pid){return [...new Set(obs.filter(o=>!pid||msBy[o.m]?.p===pi
 function analyze(){
   const pd={};projects.forEach(p=>pd[p.id]=projDates(p.id));
   return ms.map(m=>{
-    const dates=pd[m.p]||[];const asOf=st.period==="latest"?(dates[dates.length-1]||0):+st.period;
+    const dates=pd[m.p]||[];const asOf=st.period==="latest"?(dates[dates.length-1]||0):periodDay(st.period);
     const o=obs.filter(x=>x.m===m.id&&x.r<=asOf).sort((a,b)=>a.r-b.r);
     const r={m,asOf,n:o.length};
     if(!o.length){r.status="Not Yet Started";return r;}
@@ -335,9 +337,9 @@ function opt(sel,items,val){sel.innerHTML=items.map(([v,t])=>`<option value="${e
 function renderFilters(){
   if(st.proj!=="all"&&!projects.some(p=>p.id===st.proj))st.proj="all";
   opt($("f-proj"),[["all","All Projects"],...projects.map(p=>[p.id,`${p.name}${p.freq?" ("+p.freq.toLowerCase()+")":""}`])],st.proj);
-  const ds=projDates(st.proj==="all"?null:st.proj);
-  if(st.period!=="latest"&&!ds.includes(+st.period))st.period="latest";
-  opt($("f-period"),[["latest","(Latest)"],...ds.slice().reverse().map(d=>[String(d),fmt(d)])],String(st.period));
+  const months=st.proj==="all"?[...new Set(projects.flatMap(p=>projMonths(p.id)))].sort():projMonths(st.proj);
+  if(st.period!=="latest"&&!months.includes(st.period))st.period="latest";
+  opt($("f-period"),[["latest","(Latest report)"],...months.slice().reverse().map(k=>[k,`${MON[+k.slice(5,7)-1]}-${k.slice(0,4)}`])],st.period);
   opt($("f-cat"),[["all","All Categories"],...cats.map(c=>[c,c])],st.cat);
   opt($("f-status"),[["all","All Statuses"],...STATUSES.map(s=>[s,s])],st.status);
 }
@@ -365,19 +367,19 @@ function renderChart(rows){
 }
 function chartScope(rows){
   const cp=st.proj==="all"?projects[0].id:st.proj,P=projects.find(p=>p.id===cp);
-  const dates=projDates(cp);const asOf=st.period==="latest"?dates[dates.length-1]:+st.period;
+  const dates=projDates(cp);const asOf=st.period==="latest"?(dates[dates.length-1]??todayDay()):periodDay(st.period);
   const slots=rows.filter(r=>r.m.p===cp&&catOk(r)&&stOk(r)).slice(0,15);
   return {cp,P,dates,asOf,slots};
 }
 function renderKey(series){
   $("key").innerHTML=series.length?series.map(s=>{const r=s.r,mv=r.move,e=openEsc(r.m.id);
     const ind=r.n===0?'<span class="note">not started</span>':mv===null?'<span class="note">◆ first</span>':mv>0?`<span class="mv-up">▲ ${mv}d</span>`:mv<0?`<span class="mv-dn">▼ ${-mv}d</span>`:'<span class="mv-eq">● 0</span>';
-    return `<label class="krow${s.hidden?" off":""}"><span class="sw" style="background:${s.col}"></span><span class="nm"><b>${esc(r.m.id)}</b> ${esc(r.m.name)} ${e?`<span class="lvl l${e.level}">L${e.level}</span>`:""}<small>${fmt(r.finish)} · <span style="color:${SCOL[r.status]}">${r.status}</span> · ${ind}</small></span><input type="checkbox" data-id="${esc(r.m.id)}" ${s.hidden?"":"checked"} aria-label="Show ${esc(r.m.id)}"></label>`;}).join("")
+    return `<label class="krow${s.hidden?" off":""}"><span class="sw" style="background:${s.col}"></span><span class="nm"><b>${esc(r.m.id)}</b> ${esc(r.m.name)} ${e?`<span class="lvl l${e.level}">L${e.level}</span>`:""}<small>${r.finish?fmt(r.finish):"baseline "+fmt(r.m.base)} · <span style="color:${SCOL[r.status]}">${r.status}</span> · ${ind}</small></span><input type="checkbox" data-id="${esc(r.m.id)}" ${s.hidden?"":"checked"} aria-label="Show ${esc(r.m.id)}"></label>`;}).join("")
     :'<p class="empty">No milestones in this project match the filters.</p>';
 }
 function renderIcicle(rows){
   const svg=$("chart"),NS="http://www.w3.org/2000/svg";svg.innerHTML="";
-  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';return;}
+  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';svg.setAttribute("viewBox","0 0 900 120");svg.innerHTML='<text x="450" y="64" text-anchor="middle" font-size="15">The chart appears once a project, its milestones and a monthly report exist.</text>';$("ilegend").innerHTML="";return;}
   const {cp,P,asOf,slots}=chartScope(rows);
   $("chart-title").textContent=`Milestone Icicle Chart · ${cp} ${P.name}`+(st.proj==="all"&&projects.length>1?" (first project, choose one above)":"");
   const pobs=obs.filter(o=>msBy[o.m]?.p===cp&&o.r<=asOf);
@@ -428,11 +430,11 @@ function renderIcicle(rows){
 }
 function renderMTA(rows){
   const svg=$("chart"),NS="http://www.w3.org/2000/svg";svg.innerHTML="";svg.setAttribute("viewBox","0 0 860 460");
-  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';return;}
+  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';svg.setAttribute("viewBox","0 0 900 120");svg.innerHTML='<text x="450" y="64" text-anchor="middle" font-size="15">The chart appears once a project, its milestones and a monthly report exist.</text>';$("ilegend").innerHTML="";return;}
   const cp=st.proj==="all"?projects[0].id:st.proj,P=projects.find(p=>p.id===cp);
-  const dates=projDates(cp);const asOf=st.period==="latest"?dates[dates.length-1]:+st.period;const ds=dates.filter(d=>d<=asOf);
+  const dates=projDates(cp);const asOf=st.period==="latest"?(dates[dates.length-1]??todayDay()):periodDay(st.period);const ds=dates.filter(d=>d<=asOf);
   const slots=rows.filter(r=>r.m.p===cp&&catOk(r)&&stOk(r)).slice(0,15);
-  $("chart-title").textContent=`MTA · ${cp} ${P.name}`+(ds.length?` (as of ${fmt(asOf)})`:"")+(st.proj==="all"?" · first project shown":"");
+  $("chart-title").textContent=`MTA · ${cp} ${P.name}`+(ds.length?` (as of ${fmt(asOf)})`:"")+(st.proj==="all"&&projects.length>1?" · first project shown, choose one above":"");
   const W=860,H=460,m={l:74,r:16,t:12,b:40};
   const el=(n,a,p=svg)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
   const series=slots.map((r,i)=>({r,col:PAL[i],pts:ds.map(d=>obs.find(o=>o.m===r.m.id&&o.r===d)).filter(Boolean),hidden:st.hidden.has(r.m.id)}));
@@ -486,7 +488,7 @@ function renderEscalations(){
   $("esc-rows").innerHTML=list.length?list.map(e=>`<tr><td>${e.id}</td><td>${e.kind==="missed_update"?`<b>Missed update</b> · ${esc(e.discipline)}<br><span class="note">first missed due date ${fmt(day(e.period))}</span>`
       :`<b>${esc(e.milestone_id)}</b> ${esc(e.milestone_name)}<br><span class="note">${esc(e.project_id)} · ${esc(e.discipline||"")} · owner ${esc(e.owner||"–")}</span>`}</td>
     <td><span class="lvl l${e.level}">L${e.level}</span><br><span class="note">${esc(e.rule_name)}</span></td>
-    <td class="nw bad">${e.delay_days} d${e.kind==="missed_update"?" overdue":""}</td><td class="nw">${e.current_delay??"–"} d</td><td>${esc(e.recipients)}</td>
+    <td class="nw bad">${e.delay_days} d${e.kind==="missed_update"?" overdue":""}</td><td class="nw">${e.current_delay??"–"} d</td><td>${e.recipients?esc(e.recipients):'<span class="bad">Nobody: add emails to the rule or the responsibility matrix</span>'}</td>
     <td><span class="pill" style="color:${SCOL[e.status]}">${esc(e.status)}</span></td><td class="nw">${esc(e.created_at)}</td>
     <td>${e.status==="Pending approval"?`<div class="row">${e.kind==="missed_update"?`<button type="button" class="ok" data-act="Acknowledged" data-id="${e.id}">Acknowledge</button>`:`<button type="button" class="ok" data-act="Approved" data-id="${e.id}">Approve</button><button type="button" class="no" data-act="Rejected" data-id="${e.id}">Reject</button>`}</div><div class="decide" id="dec-${e.id}" hidden></div>`
       :`${esc(e.decision||"")}${e.decided_by?` by <b>${esc(e.decided_by)}</b>`:""}<br><span class="note">${esc(e.decided_at||"")}${e.comment?" · “"+esc(e.comment)+"”":""}</span>`}</td></tr>`).join("")
@@ -545,7 +547,7 @@ function mrInit(){
     const last=before[before.length-1];
     let progress=inPeriod?.pg||(inPeriod?.a?"Completed":null)||(doneBefore?"Completed":before.length?"In progress":"Yet to start");
     mr.rows[m.id]={locked:!!doneBefore,progress,completed:inPeriod?.a||doneBefore?.a||null,
-      forecast:inPeriod?(inPeriod.a?null:inPeriod.f):(last&&!doneBefore?last.f:null),reason:inPeriod?.c||"",prevF:last?.f??null};
+      forecast:inPeriod?(inPeriod.a?null:inPeriod.f):(last&&!doneBefore?last.f:(doneBefore?null:m.base)),reason:inPeriod?.c||"",prevF:last?.f??null};
   });
   mr.appr=(savedApprovers[mr.proj]||[]).slice();while(mr.appr.length<3)mr.appr.push("");
   mr.bc=[{milestone_id:"",new_baseline:"",reason:""}];
@@ -564,21 +566,21 @@ function renderMonthly(){
     const hcells=hist.map(k=>{const o=obs.filter(x=>x.m===m.id&&monthKey(x.r)===k).sort((a,b)=>b.r-a.r)[0];return `<td class="num">${o?fmt(o.a||o.f,true):""}</td>`;}).join("");
     const eff=r.progress==="Completed"?r.completed:r.forecast;const vb=eff!=null?eff-m.base:null;
     const moved=!r.locked&&eff!=null&&r.prevF!=null&&eff!==r.prevF;const needR=moved&&!r.reason.trim();
-    return `<tr><td class="num">${i+1}</td><td>${esc(m.name)} <span class="note">${id}</span></td>
+    return `<tr data-row="${id}"><td class="num">${i+1}</td><td>${esc(m.name)} <span class="note">${id}</span></td>
       <td class="num">${fmt(m.base,true)}${pendingBase.has(m.id)?'<br><span class="warn" style="font-size:11px">change pending</span>':""}</td>
       <td><select data-id="${id}" data-k="progress" ${r.locked?"disabled":""} aria-label="Progress ${id}">${["Completed","In progress","Yet to start"].map(x=>`<option ${x===r.progress?"selected":""}>${x}</option>`).join("")}</select></td>
       <td><input type="date" data-id="${id}" data-k="completed" value="${r.completed?iso(r.completed):""}" ${r.locked||r.progress!=="Completed"?"disabled":""} aria-label="Completed date ${id}"></td>
       ${hcells}
       <td class="cur"><input type="date" data-id="${id}" data-k="forecast" value="${r.progress==="Completed"?(r.completed?iso(r.completed):""):(r.forecast?iso(r.forecast):"")}" ${r.locked||r.progress==="Completed"?"disabled":""} aria-label="Forecast ${id}"></td>
-      <td class="num ${vb>0?"mv-up":vb<0?"mv-dn":""}">${vb==null?"":vb.toFixed(2)}</td>
+      <td class="num c-var ${vb>0?"mv-up":vb<0?"mv-dn":""}">${vb==null?"":vb.toFixed(2)}</td>
       <td><input class="reason${needR?" need":""}" data-id="${id}" data-k="reason" value="${esc(r.reason)}" ${r.locked?"disabled":""} placeholder="${moved?"Required: forecast moved":""}" style="min-width:220px" aria-label="Reason for variance ${id}"></td>
       ${fut.map(()=>'<td style="background:var(--bg)"></td>').join("")}</tr>`;}).join("");
-  const cc=$("mr-curcol");if(cc&&mr.scrolled!==mr.proj+mr.period){mr.scrolled=mr.proj+mr.period;const sc=cc.closest(".scroll");sc.scrollLeft=Math.max(0,cc.offsetLeft+cc.offsetWidth+420-sc.clientWidth);}
+  const cc=$("mr-curcol");if(cc&&mr.scrolled!==mr.proj+mr.period){mr.scrolled=mr.proj+mr.period;const sc=cc.closest(".scroll");const right=cc.offsetLeft+cc.offsetWidth;if(sc.clientWidth&&right>sc.clientWidth)sc.scrollLeft=right-sc.clientWidth+24;}
   const opts=[["","Choose milestone"],...pms.filter(m=>!pendingBase.has(m.id)).map(m=>[m.id,`${m.id} ${m.name}`])];
   $("bc-rows").innerHTML=mr.bc.map((b,i)=>{const m=msBy[b.milestone_id];const nb=b.new_baseline?day(b.new_baseline):null;
-    return `<tr><td><select data-bi="${i}" data-k="milestone_id" aria-label="Milestone for baseline change">${opts.map(([v,t])=>`<option value="${esc(v)}" ${v===b.milestone_id?"selected":""}>${esc(t)}</option>`).join("")}</select></td>
-      <td class="num">${m?fmt(m.base,true):""}</td><td><input type="date" data-bi="${i}" data-k="new_baseline" value="${esc(b.new_baseline)}" aria-label="New baseline"></td>
-      <td class="num">${m&&nb?((nb-m.base>0?"+":"")+(nb-m.base)+" d"):""}</td>
+    return `<tr data-bi-row="${i}"><td><select data-bi="${i}" data-k="milestone_id" aria-label="Milestone for baseline change">${opts.map(([v,t])=>`<option value="${esc(v)}" ${v===b.milestone_id?"selected":""}>${esc(t)}</option>`).join("")}</select></td>
+      <td class="num c-cur">${m?fmt(m.base,true):""}</td><td><input type="date" data-bi="${i}" data-k="new_baseline" value="${esc(b.new_baseline)}" aria-label="New baseline"></td>
+      <td class="num c-chg">${m&&nb?((nb-m.base>0?"+":"")+(nb-m.base)+" d"):""}</td>
       <td><input class="reason" data-bi="${i}" data-k="reason" value="${esc(b.reason)}" style="min-width:260px" aria-label="Reason for baseline change"></td>
       <td><button type="button" class="ghost" data-bdel="${i}">Remove</button></td></tr>`;}).join("");
   $("appr-rows").innerHTML=mr.appr.map((a,i)=>`<label for="ap-${i}">L${i+1} approver</label><input id="ap-${i}" type="email" data-ai="${i}" value="${esc(a)}" placeholder="approver${i+1}@company.com">${i>0&&i===mr.appr.length-1?`<button type="button" class="ghost" data-adel="${i}" style="justify-self:start">Remove</button>`:"<span></span>"}`).join("");
@@ -589,8 +591,22 @@ $("mr-rows").addEventListener("change",e=>{const id=e.target.dataset.id,k=e.targ
   if(k==="progress"){r.progress=e.target.value;if(r.progress!=="Completed")r.completed=null;}
   else if(k==="completed")r.completed=e.target.value?day(e.target.value):null;
   else if(k==="forecast")r.forecast=e.target.value?day(e.target.value):null;
-  else r.reason=e.target.value;renderMonthly();});
-$("bc-rows").addEventListener("change",e=>{const i=e.target.dataset.bi;if(i==null)return;mr.bc[i][e.target.dataset.k]=e.target.value;renderMonthly();});
+  else r.reason=e.target.value;updateMrRow(id);});
+function updateMrRow(id){
+  const tr=[...$("mr-rows").querySelectorAll("tr[data-row]")].find(t=>t.dataset.row===id);if(!tr)return;
+  const r=mr.rows[id],m=msBy[id],q=k=>tr.querySelector(`[data-k="${k}"]`);
+  const comp=q("completed"),fc=q("forecast"),rs=q("reason"),vc=tr.querySelector(".c-var");
+  comp.disabled=r.locked||r.progress!=="Completed";if(r.progress!=="Completed")comp.value="";
+  fc.disabled=r.locked||r.progress==="Completed";
+  fc.value=r.progress==="Completed"?(r.completed?iso(r.completed):""):(r.forecast?iso(r.forecast):"");
+  const eff=r.progress==="Completed"?r.completed:r.forecast,vb=eff!=null?eff-m.base:null;
+  vc.textContent=vb==null?"":vb.toFixed(2);vc.className="num c-var "+(vb>0?"mv-up":vb<0?"mv-dn":"");
+  const moved=!r.locked&&eff!=null&&r.prevF!=null&&eff!==r.prevF;
+  rs.classList.toggle("need",moved&&!r.reason.trim());rs.placeholder=moved?"Required: forecast moved":"";
+}
+$("bc-rows").addEventListener("change",e=>{const i=e.target.dataset.bi;if(i==null)return;mr.bc[i][e.target.dataset.k]=e.target.value;
+  const tr=e.target.closest("tr"),b=mr.bc[i],m=msBy[b.milestone_id],nb=b.new_baseline?day(b.new_baseline):null;
+  tr.querySelector(".c-cur").textContent=m?fmt(m.base,true):"";tr.querySelector(".c-chg").textContent=m&&nb?((nb-m.base>0?"+":"")+(nb-m.base)+" d"):"";});
 $("bc-rows").addEventListener("click",e=>{const i=e.target.dataset.bdel;if(i!=null){mr.bc.splice(+i,1);if(!mr.bc.length)mr.bc.push({milestone_id:"",new_baseline:"",reason:""});renderMonthly();}});
 $("bc-add").addEventListener("click",()=>{mr.bc.push({milestone_id:"",new_baseline:"",reason:""});renderMonthly();});
 $("appr-rows").addEventListener("input",e=>{const i=e.target.dataset.ai;if(i!=null)mr.appr[i]=e.target.value;});
@@ -696,6 +712,7 @@ $("btn-reset").addEventListener("click",async()=>{
 });
 function renderLog(){
   const recent=obs.slice().sort((a,b)=>b.seq-a.seq).slice(0,15);$("log-count").textContent=`${obs.length} observations`;
+  if(!recent.length){$("log").innerHTML='<tr><td colspan="6" class="empty">No forecasts recorded yet. Submit a monthly progress report above.</td></tr>';return;}
   $("log").innerHTML=recent.map(o=>{const prev=obs.filter(x=>x.m===o.m&&x.r<o.r).sort((a,b)=>b.r-a.r)[0];const mv=prev?o.f-prev.f:null;const m=msBy[o.m]||{name:""};
     return `<tr><td><b>${esc(o.m)}</b> ${esc(m.name)}</td><td class="nw">${fmt(o.r)}</td><td class="nw">${fmt(o.f)}</td><td class="nw">${o.a?fmt(o.a):""}</td>
     <td class="nw">${mv===null?"◆ First report":mv>0?`<span class="mv-up">▲ +${mv} d</span>`:mv<0?`<span class="mv-dn">▼ ${mv} d</span>`:'<span class="mv-eq">● No change</span>'}</td><td>${esc(o.c||"")}</td></tr>`;}).join("");
@@ -708,7 +725,8 @@ function renderMatrix(){
   const act=mx.rows.filter(r=>r.active);
   const od=act.filter(r=>r.compliance&&r.compliance.status==="Overdue").length;$("od-badge").hidden=!od;$("od-badge").textContent=od;
   $("mx-today").textContent="Checked against today, "+fmt(day(new Date().toISOString().slice(0,10)));
-  $("mx-cards").innerHTML=act.map(r=>{const c=r.compliance||{};const sub=c.status==="Overdue"?`missed ${c.missed.length} due date(s), ${c.overdue_days} d overdue`
+  if(!act.length)$("mx-cards").innerHTML='<p class="empty">No disciplines yet. Sign in, click "Add discipline" below, enter the responsible person, their email, update frequency and escalation contacts, then "Save matrix".</p>';
+  else $("mx-cards").innerHTML=act.map(r=>{const c=r.compliance||{};const sub=c.status==="Overdue"?`missed ${c.missed.length} due date(s), ${c.overdue_days} d overdue`
       :c.status==="Due"?`update by ${fmt(day(c.grace_until))}`:c.status==="Up to date"?`next due ${fmt(day(c.next_due))}`:"nothing to update";
     return `<div class="kpi" style="--k:${STC[c.status]||"var(--muted)"}"><span class="l">${esc(r.discipline)}</span><span class="v" style="font-size:17px">${esc(c.status||"–")}</span>
       <span class="s">${esc(r.person)} · ${esc(r.cadence)}</span><span class="s">${c.reporting?`${c.updated??c.reporting}/${c.reporting} current · `:""}${sub}</span></div>`;}).join("");

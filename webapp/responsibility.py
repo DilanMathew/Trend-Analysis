@@ -207,7 +207,7 @@ def input_workbook(con, r):
     ws["A1"].font = Font(name="Arial", size=14, bold=True, color=navy)
     ws["A2"] = (f"Responsible: {r['person']} <{r['email']}>   |   Cadence: {cadence_text(r)}   |   "
                 f"Generated {today():%d-%b-%Y}")
-    ws["A3"] = ("Fill the yellow columns: Reporting Date (status date), New Forecast Date for every milestone, Actual Completion Date "
+    ws["A3"] = ("Fill the yellow columns: Reporting Date (the 30th of the reporting month), New Forecast Date for every milestone, Actual Completion Date "
                 "only if achieved, and a Comment for any change. Do not change the other columns. Upload the file on your update page.")
     for c in ("A2", "A3"):
         ws[c].font = Font(name="Arial", size=9, italic=True, color="5D6779")
@@ -219,6 +219,7 @@ def input_workbook(con, r):
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.row_dimensions[hr].height = 30
     t = today()
+    t = dt.date(t.year, t.month, min(30, calendar.monthrange(t.year, t.month)[1]))   # monthly report date (30th)
     for i, m in enumerate(ms, hr + 1):
         vals = [r["discipline"], r["person"], m["project_id"], m["project_name"], m["id"], m["name"],
                 dt.date.fromisoformat(m["baseline"]), dt.date.fromisoformat(m["last_rep"]) if m["last_rep"] else None,
