@@ -193,7 +193,7 @@ dialog .opts button{text-align:left;padding:10px 12px}
     <h3 style="margin:14px 0 2px">Approval workflow</h3>
     <p class="note" style="margin:0">Each request is approved in order: Level 1, then Level 2, then Level 3. The email receives the approval link; leave Level 2 or 3 empty if not needed.</p>
     <div class="wfgrid">
-      <div class="wf"><h4>For creation of project &amp; setting up a baseline</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>Email ID</th></tr></thead><tbody id="wf-creation"></tbody></table></div>
+      <div class="wf"><h4>For setting up a baseline</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>Email ID</th></tr></thead><tbody id="wf-baseline"></tbody></table></div>
       <div class="wf"><h4>For addition of milestones into baseline</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>Email ID</th></tr></thead><tbody id="wf-addition"></tbody></table></div>
       <div class="wf"><h4>For rebaseline of milestones</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>Email ID</th></tr></thead><tbody id="wf-rebaseline"></tbody></table></div>
     </div>
@@ -203,6 +203,7 @@ dialog .opts button{text-align:left;padding:10px 12px}
   <div class="card" id="ps-ms-card">
     <div class="chead"><h2>Baseline milestones</h2>
       <div class="row"><span class="bline" id="ps-bline"></span><button type="button" class="primary" id="ps-rb-open">Rebaseline / New baseline</button></div></div>
+    <p class="banner" id="ps-status-banner" hidden style="margin:4px 0 10px"></p>
     <p class="note" style="margin:4px 0 10px">Add milestones, then click <b>Save milestones</b>. You will be asked whether the list is complete: <b>Yes</b> starts the approval workflow for addition into the baseline, <b>No</b> keeps them as a draft. Milestones join the baseline (and the dashboard and monthly report) only after the last level approves. Later additions follow the same steps.</p>
     <div class="row" id="ps-counts" style="margin-bottom:8px"></div>
     <div class="scroll"><table class="sheet"><thead><tr><th>S.No</th><th>Milestone ID</th><th>Project Milestone</th><th>Discipline</th><th>Baseline Date</th><th>Owner</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody id="ps-ms"></tbody></table></div>
@@ -353,14 +354,14 @@ async function api(path,opts={}){
 async function load(){
   const [data,e,c]=await Promise.all([api("/api/data"),api("/api/escalations"),api("/api/config")]);
   config=c;escs=e;
-  projects=data.P.map(([id,name,freq,sd,ed,mgr,bno])=>({id,name,freq,start:day(sd),end:day(ed),mgr,bno:bno||0}));
+  projects=data.P.map(([id,name,freq,sd,ed,mgr,bno,,,,status])=>({id,name,freq,start:day(sd),end:day(ed),mgr,bno:bno||0,status:status||"Approved"}));
   msAll=data.M.map(([p,id,name,cat,base,owner,prio,desc,status,note])=>({p,id,name,cat,base:day(base),owner,prio,desc,status:status||"Approved",note}));
   ms=msAll.filter(m=>m.status==="Approved");workflows=data.workflows||{};
-  $("empty-banner").hidden=projects.length>0;
+  $("empty-banner").hidden=livePr().length>0;
   msBy=Object.fromEntries(ms.map(m=>[m.id,m]));cats=[...new Set(ms.map(m=>m.cat).filter(Boolean))];
   obs=data.O.map(([m,r,f,a,c,id,pg])=>({m,r:day(r),f:day(f),a:day(a),c,seq:id,pg}));
   pendingBase=new Set(data.pending_baseline||[]);savedApprovers=data.approvers||{};
-  if(!projects.some(p=>p.id===mr.proj)){mr.proj=projects[0]?.id;mr.period=null;}
+  if(!livePr().some(p=>p.id===mr.proj)){mr.proj=livePr()[0]?.id;mr.period=null;}
   loadBaselineRequests().catch(()=>{});
   updateWho();renderAll();
 }
@@ -369,6 +370,7 @@ function updateWho(){
   $("who").textContent=!need?"Editing open (no admin password set)":pw?"Signed in as admin":"Read-only";
   $("btn-login").hidden=!need||!!pw;
 }
+function livePr(){return projects.filter(p=>p.status==="Approved");}
 // ------------------------------------------------ analysis (same rules as the workbook)
 function projDates(pid){return [...new Set(obs.filter(o=>!pid||msBy[o.m]?.p===pid).map(o=>o.r))].sort((a,b)=>a-b);}
 function analyze(){
@@ -390,9 +392,9 @@ const inFilter=r=>(st.proj==="all"||r.m.p===st.proj)&&catOk(r)&&stOk(r);
 const openEsc=mid=>escs.find(e=>e.milestone_id===mid&&e.status==="Pending approval");
 function opt(sel,items,val){sel.innerHTML=items.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join("");sel.value=val;}
 function renderFilters(){
-  if(st.proj!=="all"&&!projects.some(p=>p.id===st.proj))st.proj="all";
-  opt($("f-proj"),[["all","All Projects"],...projects.map(p=>[p.id,`${p.name}${p.freq?" ("+p.freq.toLowerCase()+")":""}`])],st.proj);
-  const months=st.proj==="all"?[...new Set(projects.flatMap(p=>projMonths(p.id)))].sort():projMonths(st.proj);
+  if(st.proj!=="all"&&!livePr().some(p=>p.id===st.proj))st.proj="all";
+  opt($("f-proj"),[["all","All Projects"],...livePr().map(p=>[p.id,`${p.name}${p.freq?" ("+p.freq.toLowerCase()+")":""}`])],st.proj);
+  const months=st.proj==="all"?[...new Set(livePr().flatMap(p=>projMonths(p.id)))].sort():projMonths(st.proj);
   if(st.period!=="latest"&&!months.includes(st.period))st.period="latest";
   opt($("f-period"),[["latest","(Latest report)"],...months.slice().reverse().map(k=>[k,`${MON[+k.slice(5,7)-1]}-${k.slice(0,4)}`])],st.period);
   opt($("f-cat"),[["all","All Categories"],...cats.map(c=>[c,c])],st.cat);
@@ -421,7 +423,7 @@ function renderChart(rows){
   return st.view==="icicle"?renderIcicle(rows):renderMTA(rows);
 }
 function chartScope(rows){
-  const cp=st.proj==="all"?projects[0].id:st.proj,P=projects.find(p=>p.id===cp);
+  const cp=st.proj==="all"?livePr()[0].id:st.proj,P=projects.find(p=>p.id===cp);
   const dates=projDates(cp);const asOf=st.period==="latest"?(dates[dates.length-1]??todayDay()):periodDay(st.period);
   const slots=rows.filter(r=>r.m.p===cp&&catOk(r)&&stOk(r)).slice(0,15);
   return {cp,P,dates,asOf,slots};
@@ -434,7 +436,7 @@ function renderKey(series){
 }
 function renderIcicle(rows){
   const svg=$("chart"),NS="http://www.w3.org/2000/svg";svg.innerHTML="";
-  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';svg.setAttribute("viewBox","0 0 900 120");svg.innerHTML='<text x="450" y="64" text-anchor="middle" font-size="15">The chart appears once a project, its milestones and a monthly report exist.</text>';$("ilegend").innerHTML="";return;}
+  if(!livePr().length){$("key").innerHTML='<p class="empty">No projects yet.</p>';svg.setAttribute("viewBox","0 0 900 120");svg.innerHTML='<text x="450" y="64" text-anchor="middle" font-size="15">The chart appears once a project, its milestones and a monthly report exist.</text>';$("ilegend").innerHTML="";return;}
   const {cp,P,asOf,slots}=chartScope(rows);
   $("chart-title").textContent=`Milestone Icicle Chart · ${cp} ${P.name}`+(st.proj==="all"&&projects.length>1?" (first project, choose one above)":"");
   const pobs=obs.filter(o=>msBy[o.m]?.p===cp&&o.r<=asOf);
@@ -488,7 +490,7 @@ function renderIcicle(rows){
 }
 function renderMTA(rows){
   const svg=$("chart"),NS="http://www.w3.org/2000/svg";svg.innerHTML="";svg.setAttribute("viewBox","0 0 860 460");
-  if(!projects.length){$("key").innerHTML='<p class="empty">No projects yet.</p>';svg.setAttribute("viewBox","0 0 900 120");svg.innerHTML='<text x="450" y="64" text-anchor="middle" font-size="15">The chart appears once a project, its milestones and a monthly report exist.</text>';$("ilegend").innerHTML="";return;}
+  if(!livePr().length){$("key").innerHTML='<p class="empty">No projects yet.</p>';svg.setAttribute("viewBox","0 0 900 120");svg.innerHTML='<text x="450" y="64" text-anchor="middle" font-size="15">The chart appears once a project, its milestones and a monthly report exist.</text>';$("ilegend").innerHTML="";return;}
   const cp=st.proj==="all"?projects[0].id:st.proj,P=projects.find(p=>p.id===cp);
   const dates=projDates(cp);const asOf=st.period==="latest"?(dates[dates.length-1]??todayDay()):periodDay(st.period);const ds=dates.filter(d=>d<=asOf);
   const slots=rows.filter(r=>r.m.p===cp&&catOk(r)&&stOk(r)).slice(0,15);
@@ -611,9 +613,9 @@ function mrInit(){
   mr.bc=[{milestone_id:"",new_baseline:"",reason:""}];
 }
 function renderMonthly(){
-  if(!mr.proj){$("mr-head").innerHTML="";$("mr-rows").innerHTML='<tr><td class="empty">Add a project on Projects &amp; milestones first.</td></tr>';return;}
+  if(!mr.proj){$("mr-head").innerHTML="";$("mr-rows").innerHTML='<tr><td class="empty">Add a project on Project Setup and wait for the Project Manager to approve it first.</td></tr>';return;}
   if(!mr.period)mrInit();
-  opt($("mr-proj"),projects.map(p=>[p.id,p.name]),mr.proj);
+  opt($("mr-proj"),livePr().map(p=>[p.id,p.name]),mr.proj);
   opt($("mr-period"),periodOptions(mr.proj).map(k=>[k,`${MON[+k.slice(5,7)-1]}-${k.slice(0,4)} (report date ${fmt(periodDay(k),true)})`]),mr.period);
   const pms=ms.filter(m=>m.p===mr.proj);
   const allM=projMonths(mr.proj),hist=allM.filter(k=>k<mr.period),fut=allM.filter(k=>k>mr.period);
@@ -709,21 +711,26 @@ function msRow(m,i,isNew){const st=isNew?"New":m.baseline_status||"Approved";con
     <td>${isNew?'<span class="st st-Draft">New</span>':`<span class="st st-${st}">${st==="Approved"?"In baseline":st==="Pending"?"Awaiting approval":st}</span>`}${!isNew&&m.status_note&&st!=="Approved"?`<br><span class="note" style="font-size:11px">${esc(m.status_note)}</span>`:""}</td>
     <td>${isNew?`<button type="button" class="ghost" data-rmnew="${i}">Remove</button>`:(st==="Draft"||st==="Rejected")?`<button type="button" class="ghost" data-delms="${esc(m.id)}">Delete</button>`:""}</td></tr>`;}
 function renderSetup(){
-  const pbase=projects.length?projects.map(p=>[p.id,`${p.id}  ${p.name}`]):[["","None"]];
+  const pbase=projects.length?projects.map(p=>[p.id,`${p.id}  ${p.name}`+(p.status==="Pending"?" (pending PM approval)":p.status==="Rejected"?" (rejected by PM)":"")]):[["","None"]];
   opt($("ps-proj"),[...pbase,...(ps.isNew?[["__new","(new project)"]]:[])],ps.isNew?"__new":(ps.pid||""));
   const pr=ps.isNew?{}:(ps.setup?.project||{});
   const set=(id,v)=>{$(id).value=v||"";};
   set("ps-id",pr.id);set("ps-name",pr.name);set("ps-start",pr.start_date);set("ps-end",pr.end_date);set("ps-cname",pr.controls_name);set("ps-cid",pr.controls_id);set("ps-pm",pr.manager);set("ps-pmid",pr.manager_id);
   $("ps-id").disabled=!ps.isNew&&!!pr.id;$("ps-del").hidden=ps.isNew||!pr.id;
-  $("wf-creation").innerHTML=wfRows("creation");$("wf-addition").innerHTML=wfRows("addition");$("wf-rebaseline").innerHTML=wfRows("rebaseline");
+  $("wf-baseline").innerHTML=wfRows("baseline");$("wf-addition").innerHTML=wfRows("addition");$("wf-rebaseline").innerHTML=wfRows("rebaseline");
   const card=$("ps-ms-card");card.hidden=ps.isNew||!ps.setup;$("ps-rb").hidden=card.hidden||!ps.rbOpen;
   if(card.hidden)return;
+  const pStatus=pr.status||"Approved",sb=$("ps-status-banner");
+  sb.hidden=pStatus==="Approved";sb.className="banner"+(pStatus==="Rejected"?" bad":"");
+  sb.innerHTML=pStatus==="Pending"?`<b>Awaiting Project Manager approval.</b> ${esc(pr.manager||"The Project Manager")} (${esc(pr.manager_id||"no email set")}) must approve this project before its baseline can be set up.`
+    :pStatus==="Rejected"?`<b>Rejected by the Project Manager.</b> This project cannot be used until a new one is created.`:"";
+  $("ps-savems").disabled=pStatus!=="Approved";$("ps-addrow").disabled=pStatus==="Rejected";
   const all=ps.setup.milestones;const cnt=s=>all.filter(m=>(m.baseline_status||"Approved")===s).length;
   const bno=pr.baseline_no||0;
   $("ps-bline").innerHTML=cnt("Approved")?`Current: Baseline ${bno}`:"No approved baseline yet";
   const rbPending=ps.setup.requests.some(r=>r.kind==="rebaseline"&&r.status.startsWith("Pending"));
   $("ps-rb-open").disabled=!cnt("Approved")||rbPending;
-  $("ps-rb-open").textContent=ps.setup.rebaseline_draft?`Continue Rebaseline ${bno+1} draft`:`Start Rebaseline ${bno+1}`;
+  $("ps-rb-open").textContent=ps.setup.rebaseline_draft?`Continue Baseline ${bno+1} draft`:`Start Baseline ${bno+1} (rebaseline)`;
   $("ps-rb-open").title=!cnt("Approved")?"Available once the first baseline is approved":rbPending?"A rebaseline is awaiting approval":"";
   $("ps-counts").innerHTML=[["Approved","In baseline"],["Pending","Awaiting approval"],["Draft","Draft"],["Rejected","Rejected"]].map(([k,l])=>`<span class="st st-${k}">${l}: ${cnt(k)}</span>`).join(" ");
   const own=all.filter(m=>!(m.rebase_req&&m.baseline_status==="Draft"));
@@ -739,7 +746,7 @@ function renderSetup(){
   if(ps.rbOpen)renderRebaseline();
 }
 function renderRebaseline(){
-  const bno=(ps.setup.project.baseline_no||0)+1;$("ps-rb-title").textContent=`Rebaseline ${bno}`+(ps.setup.rebaseline_draft?" (draft)":"");
+  const bno=(ps.setup.project.baseline_no||0)+1;$("ps-rb-title").textContent=`Baseline ${bno} (rebaseline)`+(ps.setup.rebaseline_draft?" (draft)":"");
   if(!ps.rb)ps.rb={changes:{},news:[],reason:""};
   const appr=ps.setup.milestones.filter(m=>(m.baseline_status||"Approved")==="Approved");const P=projects.find(p=>p.id===ps.pid)||{};
   $("rb-ch").innerHTML=appr.map(m=>{const c=ps.rb.changes[m.id]||{};const d=c.nb?day(c.nb)-day(m.baseline):null;
@@ -761,15 +768,17 @@ $("ask-yes").addEventListener("click",()=>{$("ask-dlg").close();ps.askFn&&ps.ask
 $("ask-no").addEventListener("click",()=>{$("ask-dlg").close();ps.askFn&&ps.askFn(false);});
 $("ask-cancel").addEventListener("click",()=>$("ask-dlg").close());
 function chainText(key){const lv=(ps.setup?.workflows?.[key]||[]).filter(x=>x.name);return lv.length?lv.map(x=>`Level ${x.level} <b>${esc(x.name)}</b>`).join(" → "):null;}
-function kindLabel(d){if(d.kind==="creation")return"Project creation &amp; initial baseline";if(d.kind==="addition")return"Addition into baseline";return"Rebaseline"+(d.baseline_no!=null?" "+d.baseline_no:"");}
+function kindLabel(d){if(d.kind==="project")return"Project creation (PM approval)";if(d.kind==="addition")return"Addition into baseline";return"Baseline"+(d.baseline_no!=null?" "+d.baseline_no:"");}
 $("ps-proj").addEventListener("change",e=>{if(e.target.value==="__new")return;ps.pid=e.target.value;ps.isNew=false;ps.newRows=[];ps.rbOpen=false;loadSetup();});
 $("ps-new").addEventListener("click",()=>{ps.isNew=true;ps.newRows=[];ps.rbOpen=false;ps.setup=null;renderSetup();$("ps-id").focus();});
 $("ps-save").addEventListener("click",async()=>{
-  const wf={};["creation","addition","rebaseline"].forEach(k=>{wf[k]=[1,2,3].map(l=>{const g=f=>document.querySelector(`[data-wf="${k}"][data-l="${l}"][data-k="${f}"]`).value;return{name:g("name"),email:g("email")};});});
+  const wf={};["baseline","addition","rebaseline"].forEach(k=>{wf[k]=[1,2,3].map(l=>{const g=f=>document.querySelector(`[data-wf="${k}"][data-l="${l}"][data-k="${f}"]`).value;return{name:g("name"),email:g("email")};});});
   const body={id:$("ps-id").value,name:$("ps-name").value,start_date:$("ps-start").value,end_date:$("ps-end").value,controls_name:$("ps-cname").value,controls_id:$("ps-cid").value,manager:$("ps-pm").value,manager_id:$("ps-pmid").value,workflows:wf};
-  try{if(ps.isNew){const r=await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});ps.pid=r.id;ps.isNew=false;mr.proj=r.id;mr.period=null;}
+  try{let msg='Project setup saved.';
+    if(ps.isNew){const r=await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});ps.pid=r.id;ps.isNew=false;mr.proj=r.id;mr.period=null;
+      msg=`Project created. Sent to ${esc(body.manager)} (${esc(body.manager_id)}) for approval - its baseline can be set up once they approve.`;}
     else await api(`/api/projects/${encodeURIComponent(ps.pid)}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    $("ps-toast").innerHTML='<span class="ok-t">Project setup saved.</span>';await load();await loadSetup();}
+    $("ps-toast").innerHTML=`<span class="ok-t">${msg}</span>`;await load();await loadSetup();}
   catch(e){$("ps-toast").innerHTML=`<span class="bad">${e.message.split(" | ").map(esc).join("<br>")}</span>`;}
 });
 $("ps-del").addEventListener("click",async()=>{try{await api(`/api/projects/${encodeURIComponent(ps.pid)}`,{method:"DELETE"});ps.pid=null;$("ps-toast").innerHTML='<span class="ok-t">Project deleted.</span>';await load();await loadSetup();}catch(e){$("ps-toast").innerHTML=`<span class="bad">${esc(e.message)}</span>`;}});
@@ -793,7 +802,7 @@ $("ps-savems").addEventListener("click",()=>{
   const list=gatherMilestones();const drafts=list.filter(m=>{const ex=ps.setup.milestones.find(x=>x.id===m.id);return !ex||["Draft","Rejected"].includes(ex.baseline_status);});
   if(!drafts.length){sendMilestones(false);return;}
   const isFirst=!((ps.setup.project.baseline_no||0)>0)&&!ps.setup.milestones.some(m=>(m.baseline_status||"Approved")==="Approved");
-  const wfKey=isFirst?"creation":"addition",wfLabel=isFirst?"creation of project &amp; setting up a baseline":"addition of milestones into baseline";
+  const wfKey=isFirst?"baseline":"addition",wfLabel=isFirst?"setting up a baseline":"addition of milestones into baseline";
   const ch=chainText(wfKey);
   ask("Are the milestones complete?",`${drafts.length} milestone(s) are not yet in the baseline.<br><br><b>Yes</b> starts the approval workflow for ${isFirst?"creating the project's baseline":"addition into the baseline"}: ${ch||`<span class="bad">no workflow set - fill "For ${wfLabel}" above and save the project first</span>`}.<br><b>No</b> saves them as a draft.`,
     "Yes - start approval workflow","No - save as draft",y=>sendMilestones(y));

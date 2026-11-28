@@ -100,7 +100,8 @@ def default_rules(con):
 def seed(con):
     for m in ("ALTER TABLE projects ADD COLUMN start_date TEXT", "ALTER TABLE projects ADD COLUMN end_date TEXT",
               "ALTER TABLE projects ADD COLUMN manager TEXT", "ALTER TABLE projects ADD COLUMN controls_name TEXT",
-              "ALTER TABLE projects ADD COLUMN controls_id TEXT", "ALTER TABLE projects ADD COLUMN manager_id TEXT"):
+              "ALTER TABLE projects ADD COLUMN controls_id TEXT", "ALTER TABLE projects ADD COLUMN manager_id TEXT",
+              "ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'Approved'"):
         try:
             con.execute(m)
         except Exception:
@@ -332,7 +333,7 @@ def api_data():
     with LOCK:
         c = db()
         P = [[r["id"], r["name"], r["freq"] or "", r["start_date"], r["end_date"], r["manager"] or "", r["baseline_no"] or 0,
-              r["controls_name"] or "", r["manager_id"] or "", r["controls_id"] or ""]
+              r["controls_name"] or "", r["manager_id"] or "", r["controls_id"] or "", r["status"] or "Approved"]
              for r in c.execute("SELECT * FROM projects ORDER BY id")]
         M = [[r["project_id"], r["id"], r["name"], r["category"] or "", r["baseline"], r["owner"] or "", r["priority"] or "",
               r["description"] or "", r["baseline_status"] or "Approved", r["status_note"] or ""]
@@ -710,18 +711,30 @@ def _save_project(c, pid, p, sd, ed, new):
 
 
 @app.post("/api/projects")
-def create_project(p: ProjectIn, _=Depends(require_admin)):
+def create_project(p: ProjectIn, request: Request, _=Depends(require_admin)):
+    """Creating a project needs the Project Manager's own sign-off: a single-level approval
+    request goes to the name/Email ID entered for Project Manager above. The project is
+    'Pending' until the PM approves it; only then can its baseline be set up."""
     sd, ed = _check_project(p)
+    pm_name, pm_email = p.manager.strip(), p.manager_id.strip()
+    if not pm_name or not pm_email:
+        raise HTTPException(400, "Enter the Project Manager's name and Email ID: creating a project needs their approval.")
+    if "@" not in pm_email or "." not in pm_email.split("@")[-1] or " " in pm_email:
+        raise HTTPException(400, f"'{pm_email}' is not a valid email address for the Project Manager.")
     with LOCK:
         c = db()
         try:
-            if c.execute("SELECT 1 FROM projects WHERE id=? COLLATE NOCASE", (p.id.strip(),)).fetchone():
-                raise HTTPException(400, f"Project ID {p.id.strip()} already exists.")
-            _save_project(c, p.id.strip(), p, sd, ed, True)
+            pid = p.id.strip()
+            if c.execute("SELECT 1 FROM projects WHERE id=? COLLATE NOCASE", (pid,)).fetchone():
+                raise HTTPException(400, f"Project ID {pid} already exists.")
+            _save_project(c, pid, p, sd, ed, True)
+            c.execute("UPDATE projects SET status='Pending' WHERE id=?", (pid,))
+            rid = bl.create_request(c, pid, "project", [], "Project Setup", "", None, now, deliver, base_url(request),
+                                    levels=[{"level": 1, "name": pm_name, "email": pm_email}])
             c.commit()
         finally:
             c.close()
-    return dict(ok=True, id=p.id.strip())
+    return dict(ok=True, id=pid, status="Pending", request_id=rid)
 
 
 @app.put("/api/projects/{pid}")
@@ -862,9 +875,11 @@ def save_milestones(pid: str, batch: MilestoneBatch, request: Request, _=Depends
                                       ORDER BY baseline""", (pid,)).fetchall()
                 if not drafts:
                     raise HTTPException(400, "There are no draft milestones to submit.")
+                if (pr["status"] or "Approved") != "Approved":
+                    raise HTTPException(400, "This project is awaiting the Project Manager's approval before its baseline can be set up.")
                 is_first = not (pr["baseline_no"] or 0) and not c.execute(
                     "SELECT 1 FROM milestones WHERE project_id=? AND baseline_status='Approved'", (pid,)).fetchone()
-                kind = "creation" if is_first else "addition"
+                kind = "baseline" if is_first else "addition"
                 if not bl.chain(c, pid, kind):
                     raise HTTPException(400, f"Set the approval workflow '{bl.WORKFLOWS[kind]}' (Level 1 at least) above, "
                                              "save the project, then submit.")
