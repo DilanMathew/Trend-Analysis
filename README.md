@@ -71,7 +71,7 @@ python tools/qa_msp.py /path/to/recalc.py
 
 ## Web app (Railway)
 
-`webapp/` is a FastAPI + SQLite web app deployed on Railway (`Dockerfile`, `railway.json`). It includes:
+`webapp/` is a FastAPI + SQLite web app deployed on Railway (`Dockerfile`, `railway.json`). The database lives at `DATA_DIR` (`/data` in the Dockerfile), which must be a Railway **Volume** mounted at `/data` - without one, every redeploy starts from an empty database. It includes:
 
 - **Dashboard** with the **Milestone Icicle Chart**: X axis = forecast date by month, Y axis = Baseline then each reporting month. A Trend (MTA) view is also available.
 - **Monthly progress report** (Data entry), laid out like the PMO sheet: Project Name, Reporting Period, then S.No, Project Milestone, Baseline Date, Progress (Completed / In progress / Yet to start), Completed date, Reporting Month Forecast per month, Variance (days) and Reason for variance.
