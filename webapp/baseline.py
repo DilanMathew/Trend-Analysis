@@ -1,9 +1,12 @@
-"""Monthly progress report and the two project approval workflows.
+"""Monthly progress report and the project's three approval workflows.
 
-Each project has two approval chains configured on Project Setup (Level 1, 2, 3 - name, ID, email):
-  * addition   - adding milestones into the baseline. New milestones are Draft until submitted;
-                 they join the baseline only when every level has approved.
-  * rebaseline - changing the baseline date of a milestone already in the baseline.
+Each project has three approval chains configured on Project Setup (Level 1, 2, 3 - name, email):
+  * creation   - creating the project and setting up its first (initial) baseline.
+  * addition   - adding further milestones into an existing baseline. New milestones are Draft
+                 until submitted; they join the baseline only when every level has approved.
+  * rebaseline - changing the baseline date of milestones already in the baseline. Each approved
+                 rebaseline is numbered in sequence (Rebaseline 1, Rebaseline 2, ...), tracked via
+                 projects.baseline_no / baseline_requests.baseline_no.
 A request is approved level by level (L1 -> L2 -> L3). Only the level whose turn it is gets a link.
 A rejection at any level ends the request.
 """
@@ -37,7 +40,8 @@ MIGRATIONS = [
     "ALTER TABLE projects ADD COLUMN baseline_no INTEGER DEFAULT 0",
 ]
 PROGRESS = ("Completed", "In progress", "Yet to start")
-WORKFLOWS = {"addition": "Addition of milestones into baseline", "rebaseline": "Rebaseline of milestones"}
+WORKFLOWS = {"creation": "Creation of project & setting up a baseline",
+             "addition": "Addition of milestones into baseline", "rebaseline": "Rebaseline of milestones"}
 
 
 def setup(con):
@@ -171,7 +175,7 @@ def notify_level(con, rid, level, emailer, url):
     d = request_detail(con, rid)
     a = next(x for x in d["approvals"] if x["level"] == level)
     n = len(d["approvals"])
-    what = "Milestone addition into baseline" if d["kind"] == "addition" else "Rebaseline of milestones"
+    what = d["kind_label"]
     prior = "".join(f"  L{x['level']} {who(x)}: approved by {x['decided_by']} on {x['decided_at']}"
                     + (f" - {x['comment']}" if x["comment"] else "") + "\n" for x in d["approvals"] if x["level"] < level)
     emailer(con, a["approver"], f"[MTA] {what} - approval needed (Level {level} of {n}): {d['project_id']} {d['project_name']}",
@@ -197,7 +201,7 @@ def decide(con, token, decision, name, comment, now, emailer, url, on_applied):
     new_ids = [i["milestone_id"] for i in d["items"] if d["kind"] == "addition" or i["old_baseline"] is None]
     everyone = ", ".join(dict.fromkeys([x["approver"] for x in d["approvals"] if x["approver"]]
                                        + ([d["requester_email"]] if d["requester_email"] else [])))
-    what = "Milestone addition into baseline" if d["kind"] == "addition" else "Rebaseline"
+    what = d["kind_label"]
     if decision == "Rejected":
         con.execute("UPDATE baseline_approvals SET status='Cancelled' WHERE request_id=? AND status='Waiting'", (a["request_id"],))
         con.execute("UPDATE baseline_requests SET status=?, closed_at=? WHERE id=?", (f"Rejected at L{a['level']}", now(), a["request_id"]))
