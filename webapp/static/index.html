@@ -181,20 +181,21 @@ dialog .opts button{text-align:left;padding:10px 12px}
       <div class="row" style="align-items:center;gap:12px"><h2>Project Setup</h2><label class="f" style="display:flex;align-items:center;gap:8px;min-width:0">Project Database<select id="ps-proj" style="width:auto;min-width:200px"></select></label></div>
       <button type="button" id="ps-new">+ New project</button></div>
     <div class="psgrid">
-      <label>Project ID <span class="note">(short code, e.g. PRJ-01)</span><input id="ps-id"></label>
+      <label>Project ID<input id="ps-id"></label>
       <label>Project Name<input id="ps-name"></label>
       <label>Project Start Date<input id="ps-start" type="date"></label>
       <label>Project End Date<input id="ps-end" type="date"></label>
       <label>Project Controls Name<input id="ps-cname"></label>
-      <label>Project Controls ID<input id="ps-cid"></label>
+      <label>Project Controls Email ID<input id="ps-cid"></label>
       <label>Project Manager<input id="ps-pm"></label>
-      <label>Project Manager ID<input id="ps-pmid"></label>
+      <label>Project Manager Email ID<input id="ps-pmid"></label>
     </div>
     <h3 style="margin:14px 0 2px">Approval workflow</h3>
     <p class="note" style="margin:0">Each request is approved in order: Level 1, then Level 2, then Level 3. The email receives the approval link; leave Level 2 or 3 empty if not needed.</p>
     <div class="wfgrid">
-      <div class="wf"><h4>For addition of milestones into baseline</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>ID</th><th>Email (approval link)</th></tr></thead><tbody id="wf-addition"></tbody></table></div>
-      <div class="wf"><h4>For rebaseline of milestones</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>ID</th><th>Email (approval link)</th></tr></thead><tbody id="wf-rebaseline"></tbody></table></div>
+      <div class="wf"><h4>For creation of project &amp; setting up a baseline</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>Email ID</th></tr></thead><tbody id="wf-creation"></tbody></table></div>
+      <div class="wf"><h4>For addition of milestones into baseline</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>Email ID</th></tr></thead><tbody id="wf-addition"></tbody></table></div>
+      <div class="wf"><h4>For rebaseline of milestones</h4><table class="sheet"><thead><tr><th></th><th>Name</th><th>Email ID</th></tr></thead><tbody id="wf-rebaseline"></tbody></table></div>
     </div>
     <div class="row" style="margin-top:14px"><button type="button" class="primary" id="ps-save">Save project setup</button><button type="button" class="ghost" id="ps-del">Delete project</button><span class="toast" id="ps-toast" aria-live="polite"></span></div>
   </div>
@@ -695,8 +696,7 @@ async function loadSetup(){
 }
 function wfRows(key){const lv=ps.isNew||!ps.setup?[]:ps.setup.workflows[key]||[];
   return [1,2,3].map(l=>{const v=lv.find(x=>x.level===l)||{};return `<tr><td><b>Level ${l}</b></td><td><input data-wf="${key}" data-l="${l}" data-k="name" value="${esc(v.name||"")}" placeholder="Name" aria-label="${key} level ${l} name"></td>
-    <td><input data-wf="${key}" data-l="${l}" data-k="person_id" value="${esc(v.person_id||"")}" placeholder="ID" aria-label="${key} level ${l} ID"></td>
-    <td><input data-wf="${key}" data-l="${l}" data-k="email" type="email" value="${esc(v.email||"")}" placeholder="${ps.setup&&!ps.setup.admin&&v.name?"(sign in to see)":"name@company.com"}" aria-label="${key} level ${l} email"></td></tr>`;}).join("");}
+    <td><input data-wf="${key}" data-l="${l}" data-k="email" type="email" value="${esc(v.email||"")}" placeholder="${ps.setup&&!ps.setup.admin&&v.name?"(sign in to see)":"name@company.com"}" aria-label="${key} level ${l} Email ID"></td></tr>`;}).join("");}
 function msRow(m,i,isNew){const st=isNew?"New":m.baseline_status||"Approved";const lockAll=st==="Pending";const lockBase=lockAll||st==="Approved";const k=isNew?`new-${i}`:m.id;
   const P=projects.find(p=>p.id===ps.pid)||{};
   return `<tr data-ms="${esc(k)}" ${isNew?'data-new="1"':""}><td class="num">${i+1}</td>
@@ -715,7 +715,7 @@ function renderSetup(){
   const set=(id,v)=>{$(id).value=v||"";};
   set("ps-id",pr.id);set("ps-name",pr.name);set("ps-start",pr.start_date);set("ps-end",pr.end_date);set("ps-cname",pr.controls_name);set("ps-cid",pr.controls_id);set("ps-pm",pr.manager);set("ps-pmid",pr.manager_id);
   $("ps-id").disabled=!ps.isNew&&!!pr.id;$("ps-del").hidden=ps.isNew||!pr.id;
-  $("wf-addition").innerHTML=wfRows("addition");$("wf-rebaseline").innerHTML=wfRows("rebaseline");
+  $("wf-creation").innerHTML=wfRows("creation");$("wf-addition").innerHTML=wfRows("addition");$("wf-rebaseline").innerHTML=wfRows("rebaseline");
   const card=$("ps-ms-card");card.hidden=ps.isNew||!ps.setup;$("ps-rb").hidden=card.hidden||!ps.rbOpen;
   if(card.hidden)return;
   const all=ps.setup.milestones;const cnt=s=>all.filter(m=>(m.baseline_status||"Approved")===s).length;
@@ -723,14 +723,14 @@ function renderSetup(){
   $("ps-bline").innerHTML=cnt("Approved")?`Current: Baseline ${bno}`:"No approved baseline yet";
   const rbPending=ps.setup.requests.some(r=>r.kind==="rebaseline"&&r.status.startsWith("Pending"));
   $("ps-rb-open").disabled=!cnt("Approved")||rbPending;
-  $("ps-rb-open").textContent=ps.setup.rebaseline_draft?`Continue Baseline ${bno+1} draft`:`Rebaseline / New baseline ${bno+1}`;
+  $("ps-rb-open").textContent=ps.setup.rebaseline_draft?`Continue Rebaseline ${bno+1} draft`:`Start Rebaseline ${bno+1}`;
   $("ps-rb-open").title=!cnt("Approved")?"Available once the first baseline is approved":rbPending?"A rebaseline is awaiting approval":"";
   $("ps-counts").innerHTML=[["Approved","In baseline"],["Pending","Awaiting approval"],["Draft","Draft"],["Rejected","Rejected"]].map(([k,l])=>`<span class="st st-${k}">${l}: ${cnt(k)}</span>`).join(" ");
   const own=all.filter(m=>!(m.rebase_req&&m.baseline_status==="Draft"));
   $("ps-ms").innerHTML=own.map((m,i)=>msRow(m,i,false)).join("")+ps.newRows.map((m,i)=>msRow(m,own.length+i,true).replace(`data-ms="new-${own.length+i}"`,`data-ms="new-${i}"`).replace(`data-rmnew="${own.length+i}"`,`data-rmnew="${i}"`)).join("")
     ||'<tr><td colspan="9" class="empty">No milestones yet. Click "+ Add milestone row".</td></tr>';
   $("disc-list").innerHTML=[...new Set([...(mx.rows||[]).filter(r=>r.active).map(r=>r.discipline),...cats])].map(d=>`<option value="${esc(d)}">`).join("");
-  $("ps-req").innerHTML=ps.setup.requests.length?ps.setup.requests.map(d=>`<tr><td>${d.id}</td><td>${d.kind==="addition"?"Addition into baseline":`Rebaseline${d.baseline_no!=null?" → Baseline "+d.baseline_no:""}`}</td>
+  $("ps-req").innerHTML=ps.setup.requests.length?ps.setup.requests.map(d=>`<tr><td>${d.id}</td><td>${kindLabel(d)}</td>
     <td>${d.items.map(i=>`<b>${esc(i.milestone_id)}</b> ${i.old_baseline?`${fmt(day(i.old_baseline),true)} → ${fmt(day(i.new_baseline),true)}`:`new · ${fmt(day(i.new_baseline),true)}`}`).join("<br>")}</td>
     <td class="nw">${esc(d.requested_by||"")}<br><span class="note">${esc(d.created_at||"")}</span></td>
     <td><div class="chain">${d.approvals.map(a=>`<span class="${a.status}">L${a.level} ${esc(a.approver_name||"")} · ${esc(a.status)}</span>`).join("")}</div>${d.approvals.filter(a=>a.link).map(a=>`<a href="${esc(a.link)}" target="_blank" rel="noopener">Open Level ${a.level} approval page</a>`).join("")}</td>
@@ -739,7 +739,7 @@ function renderSetup(){
   if(ps.rbOpen)renderRebaseline();
 }
 function renderRebaseline(){
-  const bno=(ps.setup.project.baseline_no||0)+1;$("ps-rb-title").textContent=`Rebaseline - Baseline ${bno}`+(ps.setup.rebaseline_draft?" (draft)":"");
+  const bno=(ps.setup.project.baseline_no||0)+1;$("ps-rb-title").textContent=`Rebaseline ${bno}`+(ps.setup.rebaseline_draft?" (draft)":"");
   if(!ps.rb)ps.rb={changes:{},news:[],reason:""};
   const appr=ps.setup.milestones.filter(m=>(m.baseline_status||"Approved")==="Approved");const P=projects.find(p=>p.id===ps.pid)||{};
   $("rb-ch").innerHTML=appr.map(m=>{const c=ps.rb.changes[m.id]||{};const d=c.nb?day(c.nb)-day(m.baseline):null;
@@ -760,11 +760,12 @@ function ask(title,text,yes,no,fn){$("ask-title").textContent=title;$("ask-text"
 $("ask-yes").addEventListener("click",()=>{$("ask-dlg").close();ps.askFn&&ps.askFn(true);});
 $("ask-no").addEventListener("click",()=>{$("ask-dlg").close();ps.askFn&&ps.askFn(false);});
 $("ask-cancel").addEventListener("click",()=>$("ask-dlg").close());
-function chainText(key){const lv=(ps.setup?.workflows?.[key]||[]).filter(x=>x.name);return lv.length?lv.map(x=>`Level ${x.level} <b>${esc(x.name)}</b>${x.person_id?" ("+esc(x.person_id)+")":""}`).join(" → "):null;}
+function chainText(key){const lv=(ps.setup?.workflows?.[key]||[]).filter(x=>x.name);return lv.length?lv.map(x=>`Level ${x.level} <b>${esc(x.name)}</b>`).join(" → "):null;}
+function kindLabel(d){if(d.kind==="creation")return"Project creation &amp; initial baseline";if(d.kind==="addition")return"Addition into baseline";return"Rebaseline"+(d.baseline_no!=null?" "+d.baseline_no:"");}
 $("ps-proj").addEventListener("change",e=>{if(e.target.value==="__new")return;ps.pid=e.target.value;ps.isNew=false;ps.newRows=[];ps.rbOpen=false;loadSetup();});
 $("ps-new").addEventListener("click",()=>{ps.isNew=true;ps.newRows=[];ps.rbOpen=false;ps.setup=null;renderSetup();$("ps-id").focus();});
 $("ps-save").addEventListener("click",async()=>{
-  const wf={};["addition","rebaseline"].forEach(k=>{wf[k]=[1,2,3].map(l=>{const g=f=>document.querySelector(`[data-wf="${k}"][data-l="${l}"][data-k="${f}"]`).value;return{name:g("name"),person_id:g("person_id"),email:g("email")};});});
+  const wf={};["creation","addition","rebaseline"].forEach(k=>{wf[k]=[1,2,3].map(l=>{const g=f=>document.querySelector(`[data-wf="${k}"][data-l="${l}"][data-k="${f}"]`).value;return{name:g("name"),email:g("email")};});});
   const body={id:$("ps-id").value,name:$("ps-name").value,start_date:$("ps-start").value,end_date:$("ps-end").value,controls_name:$("ps-cname").value,controls_id:$("ps-cid").value,manager:$("ps-pm").value,manager_id:$("ps-pmid").value,workflows:wf};
   try{if(ps.isNew){const r=await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});ps.pid=r.id;ps.isNew=false;mr.proj=r.id;mr.period=null;}
     else await api(`/api/projects/${encodeURIComponent(ps.pid)}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -791,8 +792,10 @@ async function sendMilestones(submit){
 $("ps-savems").addEventListener("click",()=>{
   const list=gatherMilestones();const drafts=list.filter(m=>{const ex=ps.setup.milestones.find(x=>x.id===m.id);return !ex||["Draft","Rejected"].includes(ex.baseline_status);});
   if(!drafts.length){sendMilestones(false);return;}
-  const ch=chainText("addition");
-  ask("Are the milestones complete?",`${drafts.length} milestone(s) are not yet in the baseline.<br><br><b>Yes</b> starts the approval workflow for addition into the baseline: ${ch||'<span class="bad">no workflow set - fill "For addition of milestones into baseline" above and save the project first</span>'}.<br><b>No</b> saves them as a draft.`,
+  const isFirst=!((ps.setup.project.baseline_no||0)>0)&&!ps.setup.milestones.some(m=>(m.baseline_status||"Approved")==="Approved");
+  const wfKey=isFirst?"creation":"addition",wfLabel=isFirst?"creation of project &amp; setting up a baseline":"addition of milestones into baseline";
+  const ch=chainText(wfKey);
+  ask("Are the milestones complete?",`${drafts.length} milestone(s) are not yet in the baseline.<br><br><b>Yes</b> starts the approval workflow for ${isFirst?"creating the project's baseline":"addition into the baseline"}: ${ch||`<span class="bad">no workflow set - fill "For ${wfLabel}" above and save the project first</span>`}.<br><b>No</b> saves them as a draft.`,
     "Yes - start approval workflow","No - save as draft",y=>sendMilestones(y));
 });
 $("ps-rb-open").addEventListener("click",()=>{ps.rbOpen=true;renderSetup();$("ps-rb").scrollIntoView({behavior:"smooth",block:"start"});});
@@ -823,7 +826,7 @@ function renderBaselineRequests(){
   $("bl-rows").innerHTML=blreqs.length?blreqs.map(d=>`<tr><td>${d.id}</td><td>${esc(d.project_id)}<br><span class="note">${esc(d.project_name)}</span></td>
     <td>${d.items.map(i=>`<b>${esc(i.milestone_id)}</b> ${i.old_baseline?`${fmt(day(i.old_baseline),true)} → <b>${fmt(day(i.new_baseline),true)}</b>`:`new · <b>${fmt(day(i.new_baseline),true)}</b>`}<br><span class="note">${esc(i.reason||"")}</span>`).join("<br>")}</td>
     <td class="nw">${esc(d.requested_by||"")}<br><span class="note">${esc(d.created_at||"")} · period ${esc(d.period||"")}</span></td>
-    <td><span class="note">${d.kind==="addition"?"Addition into baseline":"Rebaseline"}</span><div class="chain">${d.approvals.map(a=>`<span class="${a.status}">L${a.level} ${esc(a.approver_name||a.approver)} · ${esc(a.status)}${a.decided_by?" · "+esc(a.decided_by):""}</span>`).join("")}</div>${d.approvals.filter(a=>a.link).map(a=>`<br><a href="${esc(a.link)}" target="_blank" rel="noopener">Open L${a.level} approval page</a>`).join("")}</td>
+    <td><span class="note">${kindLabel(d)}</span><div class="chain">${d.approvals.map(a=>`<span class="${a.status}">L${a.level} ${esc(a.approver_name||a.approver)} · ${esc(a.status)}${a.decided_by?" · "+esc(a.decided_by):""}</span>`).join("")}</div>${d.approvals.filter(a=>a.link).map(a=>`<br><a href="${esc(a.link)}" target="_blank" rel="noopener">Open L${a.level} approval page</a>`).join("")}</td>
     <td><span class="pill" style="color:${d.status==="Approved"?"var(--early)":d.status.startsWith("Rejected")?"var(--late)":"var(--amber)"}">${esc(d.status)}</span></td></tr>`).join("")
     :'<tr><td colspan="6" class="empty">No baseline change requests yet. Raise one from Data entry → Monthly progress report.</td></tr>';
 }

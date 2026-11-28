@@ -862,12 +862,15 @@ def save_milestones(pid: str, batch: MilestoneBatch, request: Request, _=Depends
                                       ORDER BY baseline""", (pid,)).fetchall()
                 if not drafts:
                     raise HTTPException(400, "There are no draft milestones to submit.")
-                if not bl.chain(c, pid, "addition"):
-                    raise HTTPException(400, "Set the approval workflow 'Addition of milestones into baseline' (Level 1 at least) above, "
+                is_first = not (pr["baseline_no"] or 0) and not c.execute(
+                    "SELECT 1 FROM milestones WHERE project_id=? AND baseline_status='Approved'", (pid,)).fetchone()
+                kind = "creation" if is_first else "addition"
+                if not bl.chain(c, pid, kind):
+                    raise HTTPException(400, f"Set the approval workflow '{bl.WORKFLOWS[kind]}' (Level 1 at least) above, "
                                              "save the project, then submit.")
                 if not batch.submitted_by.strip():
                     raise HTTPException(400, "Enter your name (Submitted by) before starting the approval workflow.")
-                rid = bl.create_request(c, pid, "addition", [(r["id"], None, r["baseline"], "") for r in drafts],
+                rid = bl.create_request(c, pid, kind, [(r["id"], None, r["baseline"], "") for r in drafts],
                                         batch.submitted_by.strip(), batch.submitter_email.strip(), None, now, deliver, base_url(request))
             c.commit()
         finally:
