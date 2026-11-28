@@ -128,7 +128,7 @@ dialog .opts button{text-align:left;padding:10px 12px}
 </style></head>
 <body><div class="wrap">
 <header>
-  <div><h1>Milestone Icicle</h1><p class="sub">Forecast history, delay escalation and approvals</p></div>
+  <div><h1>Schedule Analyzer</h1></div>
   <div class="row"><span class="note" id="who"></span><button type="button" id="btn-login" class="ghost">Sign in to edit</button></div>
 </header>
 <nav aria-label="Sections">
@@ -177,8 +177,9 @@ dialog .opts button{text-align:left;padding:10px 12px}
 <!-- ======================= PROJECT SETUP -->
 <section id="v-projects" class="wrap" hidden>
   <div class="card">
-    <div class="chead"><h2>Project Setup</h2>
-      <div class="row"><label class="f" style="min-width:260px">Project<select id="ps-proj"></select></label><button type="button" id="ps-new" style="align-self:end">+ New project</button></div></div>
+    <div class="chead">
+      <div class="row" style="align-items:center;gap:12px"><h2>Project Setup</h2><label class="f" style="display:flex;align-items:center;gap:8px;min-width:0">Project Database<select id="ps-proj" style="width:auto;min-width:200px"></select></label></div>
+      <button type="button" id="ps-new">+ New project</button></div>
     <div class="psgrid">
       <label>Project ID <span class="note">(short code, e.g. PRJ-01)</span><input id="ps-id"></label>
       <label>Project Name<input id="ps-name"></label>
@@ -708,7 +709,8 @@ function msRow(m,i,isNew){const st=isNew?"New":m.baseline_status||"Approved";con
     <td>${isNew?'<span class="st st-Draft">New</span>':`<span class="st st-${st}">${st==="Approved"?"In baseline":st==="Pending"?"Awaiting approval":st}</span>`}${!isNew&&m.status_note&&st!=="Approved"?`<br><span class="note" style="font-size:11px">${esc(m.status_note)}</span>`:""}</td>
     <td>${isNew?`<button type="button" class="ghost" data-rmnew="${i}">Remove</button>`:(st==="Draft"||st==="Rejected")?`<button type="button" class="ghost" data-delms="${esc(m.id)}">Delete</button>`:""}</td></tr>`;}
 function renderSetup(){
-  opt($("ps-proj"),[...projects.map(p=>[p.id,`${p.id}  ${p.name}`]),...(ps.isNew?[["__new","(new project)"]]:[])],ps.isNew?"__new":(ps.pid||""));
+  const pbase=projects.length?projects.map(p=>[p.id,`${p.id}  ${p.name}`]):[["","None"]];
+  opt($("ps-proj"),[...pbase,...(ps.isNew?[["__new","(new project)"]]:[])],ps.isNew?"__new":(ps.pid||""));
   const pr=ps.isNew?{}:(ps.setup?.project||{});
   const set=(id,v)=>{$(id).value=v||"";};
   set("ps-id",pr.id);set("ps-name",pr.name);set("ps-start",pr.start_date);set("ps-end",pr.end_date);set("ps-cname",pr.controls_name);set("ps-cid",pr.controls_id);set("ps-pm",pr.manager);set("ps-pmid",pr.manager_id);
@@ -898,7 +900,7 @@ function renderAll(){renderFilters();const rows=analyze();renderKPIs(rows);rende
 $("key").addEventListener("change",e=>{const id=e.target.dataset.id;if(!id)return;e.target.checked?st.hidden.delete(id):st.hidden.add(id);renderChart(analyze());});
 $("view-icicle").addEventListener("click",()=>{st.view="icicle";renderChart(analyze());});
 $("view-mta").addEventListener("click",()=>{st.view="mta";renderChart(analyze());});
-function route(){const v=(location.hash||"#dashboard").slice(1);const views=["dashboard","projects","escalations","matrix","rules","data","outbox"];const cur=v==="setup"?"projects":views.includes(v)?v:"dashboard";
+function route(){const v=(location.hash||"#projects").slice(1);const views=["dashboard","projects","escalations","matrix","rules","data","outbox"];const cur=v==="setup"?"projects":views.includes(v)?v:"projects";
   views.forEach(x=>$("v-"+x).hidden=x!==cur);document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.v===cur));
   if(cur==="rules")loadRules().catch(()=>{});if(cur==="matrix")loadMatrix().catch(()=>{});if(cur==="projects")loadMatrix().catch(()=>{}).then(loadSetup);if(cur==="data"){mr.scrolled=null;renderMonthly();}if(cur==="escalations")loadBaselineRequests().catch(()=>{});if(cur==="outbox")loadOutbox().catch(()=>{});}
 window.addEventListener("hashchange",route);
