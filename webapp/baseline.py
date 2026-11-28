@@ -1,12 +1,17 @@
-"""Monthly progress report and the project's three approval workflows.
+"""Monthly progress report and the project's approval workflows.
 
-Each project has three approval chains configured on Project Setup (Level 1, 2, 3 - name, email):
-  * creation   - creating the project and setting up its first (initial) baseline.
+  * project    - creating a project. Approved by the Project Manager alone (one level: the PM
+                 name/email entered on Project Setup) - no configurable chain. The project is
+                 'Pending' until the PM approves it, and only then can its baseline be set.
+  * baseline   - setting up the project's first (initial) baseline, once the project itself is
+                 approved. Configurable Level 1, 2, 3 (name, email) on Project Setup.
   * addition   - adding further milestones into an existing baseline. New milestones are Draft
                  until submitted; they join the baseline only when every level has approved.
-  * rebaseline - changing the baseline date of milestones already in the baseline. Each approved
-                 rebaseline is numbered in sequence (Rebaseline 1, Rebaseline 2, ...), tracked via
-                 projects.baseline_no / baseline_requests.baseline_no.
+                 Configurable Level 1, 2, 3 (name, email).
+  * rebaseline - changing the baseline date of milestones already in the baseline. Configurable
+                 Level 1, 2, 3 (name, email). Each approved baseline (the initial one and every
+                 rebaseline after it) is numbered in sequence - Baseline 1, Baseline 2, Baseline 3,
+                 ... - tracked via projects.baseline_no / baseline_requests.baseline_no.
 A request is approved level by level (L1 -> L2 -> L3). Only the level whose turn it is gets a link.
 A rejection at any level ends the request.
 """
@@ -40,8 +45,9 @@ MIGRATIONS = [
     "ALTER TABLE projects ADD COLUMN baseline_no INTEGER DEFAULT 0",
 ]
 PROGRESS = ("Completed", "In progress", "Yet to start")
-WORKFLOWS = {"creation": "Creation of project & setting up a baseline",
+WORKFLOWS = {"baseline": "Setting up a baseline",
              "addition": "Addition of milestones into baseline", "rebaseline": "Rebaseline of milestones"}
+KIND_LABELS = {"project": "Project creation", **WORKFLOWS}
 
 
 def setup(con):
@@ -51,6 +57,11 @@ def setup(con):
             con.execute(m)
         except Exception:
             pass
+    # the "creation" workflow was renamed to "baseline"; carry over any already-configured chain
+    try:
+        con.execute("UPDATE project_workflows SET workflow='baseline' WHERE workflow='creation'")
+    except Exception:
+        pass
     con.commit()
 
 
@@ -109,22 +120,24 @@ def save_workflows(con, pid, wf):
 
 
 # ----------------------------------------------------------------------------- requests
-def create_request(con, pid, kind, items, requested_by, requester_email, period, now, emailer, url, draft=False):
+def create_request(con, pid, kind, items, requested_by, requester_email, period, now, emailer, url, draft=False, levels=None):
     """items: [(milestone_id, old_baseline, new_baseline, reason)] - old_baseline None = new milestone.
+    levels: explicit [{level,name,email}, ...] to approve with, instead of the project's configured
+    chain for `kind` - used for kind='project', approved by the Project Manager alone.
     Returns request id. A draft gets no approvers until submit_request()."""
     cur = con.execute("""INSERT INTO baseline_requests(project_id,period,requested_by,requester_email,created_at,status,current_level,kind)
                          VALUES(?,?,?,?,?,?,1,?)""", (pid, period, requested_by, requester_email, now(), "Draft", kind))
     rid = cur.lastrowid
     con.executemany("INSERT INTO baseline_items VALUES(?,?,?,?,?)", [(rid,) + tuple(i) for i in items])
     if not draft:
-        submit_request(con, rid, requested_by, requester_email, now, emailer, url)
+        submit_request(con, rid, requested_by, requester_email, now, emailer, url, levels=levels)
     return rid
 
 
-def submit_request(con, rid, requested_by, requester_email, now, emailer, url):
+def submit_request(con, rid, requested_by, requester_email, now, emailer, url, levels=None):
     r = con.execute("SELECT * FROM baseline_requests WHERE id=?", (rid,)).fetchone()
     pid, kind = r["project_id"], r["kind"] or "rebaseline"
-    levels = chain(con, pid, kind)
+    levels = levels if levels is not None else chain(con, pid, kind)
     con.execute("DELETE FROM baseline_approvals WHERE request_id=?", (rid,))
     con.execute("UPDATE baseline_requests SET status='Pending L1', current_level=1, requested_by=?, requester_email=?, created_at=? WHERE id=?",
                 (requested_by, requester_email, now(), rid))
@@ -134,7 +147,7 @@ def submit_request(con, rid, requested_by, requester_email, now, emailer, url):
     for lv in levels:
         con.execute("""INSERT INTO baseline_approvals(request_id,level,approver,token,status,approver_name,approver_id)
                        VALUES(?,?,?,?,?,?,?)""", (rid, lv["level"], lv["email"], secrets.token_urlsafe(18),
-                                                  "Pending" if lv["level"] == 1 else "Waiting", lv["name"], lv["person_id"]))
+                                                  "Pending" if lv["level"] == 1 else "Waiting", lv["name"], lv.get("person_id", "")))
     notify_level(con, rid, 1, emailer, url)
     return rid
 
@@ -146,7 +159,7 @@ def request_detail(con, rid):
         return None
     d = dict(r)
     d["kind"] = d.get("kind") or "rebaseline"
-    d["kind_label"] = WORKFLOWS.get(d["kind"], d["kind"])
+    d["kind_label"] = KIND_LABELS.get(d["kind"], d["kind"])
     d["items"] = [dict(x) for x in con.execute("""SELECT i.*, m.name AS milestone_name FROM baseline_items i
                                                   LEFT JOIN milestones m ON m.id=i.milestone_id WHERE request_id=?""", (rid,))]
     d["approvals"] = [dict(x) for x in con.execute("SELECT * FROM baseline_approvals WHERE request_id=? ORDER BY level", (rid,))]
@@ -156,6 +169,15 @@ def request_detail(con, rid):
 def who(a):
     nm = a.get("approver_name") or a.get("approver") or "-"
     return f"{nm} ({a['approver_id']})" if a.get("approver_id") else nm
+
+
+def project_text(con, pid):
+    pr = con.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+    if not pr:
+        return ""
+    return (f"  Project ID: {pr['id']}\n  Name: {pr['name']}\n"
+            f"  Start: {fmt(pr['start_date'])}   End: {fmt(pr['end_date'])}\n"
+            f"  Controls: {pr['controls_name'] or '-'}   Manager: {pr['manager'] or '-'}\n")
 
 
 def summary_text(d):
@@ -176,11 +198,12 @@ def notify_level(con, rid, level, emailer, url):
     a = next(x for x in d["approvals"] if x["level"] == level)
     n = len(d["approvals"])
     what = d["kind_label"]
+    detail_label, detail = ("Project", project_text(con, d["project_id"])) if d["kind"] == "project" else ("Milestones", summary_text(d))
     prior = "".join(f"  L{x['level']} {who(x)}: approved by {x['decided_by']} on {x['decided_at']}"
                     + (f" - {x['comment']}" if x["comment"] else "") + "\n" for x in d["approvals"] if x["level"] < level)
     emailer(con, a["approver"], f"[MTA] {what} - approval needed (Level {level} of {n}): {d['project_id']} {d['project_name']}",
             f"Dear {who(a)},\n\n{what} for {d['project_id']} {d['project_name']} needs your approval (Level {level} of {n}).\n\n"
-            f"Requested by: {d['requested_by']} on {d['created_at']}\n\nMilestones:\n{summary_text(d)}\n\n"
+            f"Requested by: {d['requested_by']} on {d['created_at']}\n\n{detail_label}:\n{detail}\n\n"
             + (f"Already approved:\n{prior}\n" if prior else "") + f"Approve or reject here:\n{url}/baseline/{a['token']}\n", None)
 
 
@@ -208,9 +231,12 @@ def decide(con, token, decision, name, comment, now, emailer, url, on_applied):
         for mid in new_ids:
             con.execute("UPDATE milestones SET baseline_status='Rejected', rebase_req=NULL, status_note=? WHERE id=?",
                         (f"Rejected at Level {a['level']} by {name.strip()}: {comment.strip()}", mid))
+        if d["kind"] == "project":
+            con.execute("UPDATE projects SET status='Rejected' WHERE id=?", (d["project_id"],))
+        detail = project_text(con, d["project_id"]) if d["kind"] == "project" else f"Milestones (not applied):\n{summary_text(d)}\n"
         emailer(con, everyone, f"[MTA] {what} rejected at Level {a['level']}: {d['project_id']} {d['project_name']}",
                 f"{name.strip()} (Level {a['level']}) rejected the request from {d['requested_by']}.\nReason: {comment.strip()}\n\n"
-                f"Milestones (not applied):\n{summary_text(d)}\n", None)
+                f"{detail}\n", None)
     elif a["level"] < n:
         nxt = a["level"] + 1
         con.execute("UPDATE baseline_approvals SET status='Pending' WHERE request_id=? AND level=?", (a["request_id"], nxt))
@@ -220,9 +246,9 @@ def decide(con, token, decision, name, comment, now, emailer, url, on_applied):
         notify_level(con, a["request_id"], nxt, emailer, url)
     else:
         pr = con.execute("SELECT baseline_no FROM projects WHERE id=?", (d["project_id"],)).fetchone()
-        bno = (pr["baseline_no"] or 0) + (1 if d["kind"] == "rebaseline" else 0)
+        bno = (pr["baseline_no"] or 0) + (1 if d["kind"] in ("baseline", "rebaseline") else 0)
         for i in d["items"]:
-            if d["kind"] == "addition" or i["old_baseline"] is None:
+            if d["kind"] in ("baseline", "addition") or i["old_baseline"] is None:
                 con.execute("UPDATE milestones SET baseline_status='Approved', rebase_req=NULL, status_note=? WHERE id=?",
                             (f"Added to Baseline {bno} on {now()}", i["milestone_id"]))
             else:
@@ -231,9 +257,15 @@ def decide(con, token, decision, name, comment, now, emailer, url, on_applied):
                                                                                 a["request_id"], now()))
         con.execute("UPDATE projects SET baseline_no=? WHERE id=?", (bno, d["project_id"]))
         con.execute("UPDATE baseline_requests SET status='Approved', closed_at=?, baseline_no=? WHERE id=?", (now(), bno, a["request_id"]))
+        if d["kind"] == "project":
+            con.execute("UPDATE projects SET status='Approved' WHERE id=?", (d["project_id"],))
+            detail = f"The project is now approved and ready to have its baseline set up:\n{project_text(con, d['project_id'])}"
+        elif d["kind"] in ("baseline", "addition"):
+            detail = f"These milestones are now in Baseline {bno}:\n{summary_text(d)}"
+        else:
+            detail = f"The new baselines are now in effect (Baseline {bno}):\n{summary_text(d)}"
         emailer(con, everyone, f"[MTA] {what} approved: {d['project_id']} {d['project_name']}",
-                f"All {n} approval level(s) approved. " + ("These milestones are now in the baseline:\n" if d["kind"] == "addition"
-                                                           else "The new baselines are now in effect:\n") + summary_text(d) + "\n", None)
+                f"All {n} approval level(s) approved. {detail}\n", None)
         on_applied()
     con.commit()
     return request_detail(con, a["request_id"])
